@@ -3,6 +3,7 @@ import { ConfirmacionDto } from 'src/dto/ConfirmacionDto';
 import { AudioProxy } from 'src/proxy/audio.proxy';
 import { AnswerValidateDto } from 'src/proxy/dto/AnswerValidateDto';
 import { SatProxy } from 'src/proxy/sat.proxy';
+import { getDateString } from 'src/shared/DateTimeHelper';
 
 @Injectable()
 export class IVRService {
@@ -107,5 +108,31 @@ export class IVRService {
     promise.audio = audio.element;
     promise.placa = papeleta ?? '';
     return promise;
+  }
+  async papeletaInfo(placaId: string): Promise<Buffer> {
+    const bullet = await this.satProxy.GetPapeleta(placaId);
+    if (!bullet.success)
+      throw new InternalServerErrorException(
+        `Error con  la consulta de sat genero un ${bullet.statusCode}`,
+      );
+    if (bullet.element == undefined) {
+      const invalid = await this.audioProxy.tts(
+        'papeleta no fue encontrada, intentar de nuevo',
+      );
+      if (invalid.element == null || !invalid.success)
+        throw new InternalServerErrorException(
+          `Error con  la peticion para mandar el texto genero un ${invalid.statusCode}`,
+        );
+      return invalid.element;
+    }
+    const message = `la papeleta  número ${bullet.element.documento} tiene un monto de ${bullet.element.monto} soles. 
+    La fecha de vencimiento para el pago con el 50% de descuento es ${getDateString(bullet.element.fechavencimiento)}
+    La fecha de imposición es ${getDateString(bullet.element.fechainfraccion)}`;
+    const response = await this.audioProxy.tts(message);
+    if (response.element == null || !response.success)
+      throw new InternalServerErrorException(
+        `Error con  la peticion para mandar el texto genero un ${response.statusCode}`,
+      );
+    return response.element;
   }
 }

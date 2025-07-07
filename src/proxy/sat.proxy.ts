@@ -161,4 +161,33 @@ export class SatProxy {
     promise.element = content;
     return promise;
   }
+  async GetPapeleta(
+    papeletaId: string,
+  ): Promise<ApiResponseProxyDTO<PlacaDto>> {
+    const token = await this.getToken();
+    const config: AxiosRequestConfig = {
+      headers: {
+        Authorization: `Bearer ${token.element?.access_token}`,
+        IP: '172.168.1.1',
+      },
+      validateStatus: () => true,
+    };
+    const response: AxiosResponse<PlacaDto[]> = await this.client.get(
+      `/saldomatico/saldomatico/4/${papeletaId}/0/10/11`,
+      config,
+    );
+    const promise = new ApiResponseProxyDTO<PlacaDto>();
+    if (response.status != 200) {
+      promise.success = false;
+      promise.statusCode = response.status;
+      promise.url = '';
+      return promise;
+    }
+    let content = response.data;
+    content = content.filter((item) => item.documento.trim() == papeletaId);
+    promise.success = true;
+    promise.statusCode = response.status;
+    promise.element = content.length == 0 ? undefined : content[0];
+    return promise;
+  }
 }

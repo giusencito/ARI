@@ -58,4 +58,16 @@ export class IVRController {
     });
     res.send(response.audio);
   }
+  @Get('bullets/:bulletId')
+  async papeletaInfo(
+    @Param('bulletId') bulletId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const response = await this.ivrService.papeletaInfo(bulletId);
+    res.set({
+      'Content-Type': 'audio/wav',
+      'Content-Disposition': 'attachment; filename="resultado.wav"',
+    });
+    res.send(response);
+  }
 }
