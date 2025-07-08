@@ -1,7 +1,15 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config/dist';
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { SAT_URL } from 'src/shared/Constants';
+import {
+  CLAVE,
+  CLIENT_ID,
+  CLIENT_SECRET,
+  GRANT_TYPE,
+  REALM,
+  SAT_URL,
+  USUARIO,
+} from 'src/shared/Constants';
 import { TokenDto } from './dto/TokenDto';
 import { ApiResponseProxyDTO } from 'src/shared/ApiResponseProxyDTO';
 import { BulletDto } from './dto/BulletDto';
@@ -23,12 +31,12 @@ export class SatProxy {
   }
   async getToken(): Promise<ApiResponseProxyDTO<TokenDto>> {
     const body = {
-      client_id: 'Omnicanalidad',
-      client_secret: 'MKVV93OyQCWLrTy8aAyo41l68qcBvFMQ',
-      usuario: 'usromnicanalidad',
-      clave: '8*n56yBTM3!j@iXM',
-      realm: 'sat-mobiles',
-      grant_type: 'password',
+      client_id: this.configService.get<string>(CLIENT_ID) ?? '',
+      client_secret: this.configService.get<string>(CLIENT_SECRET) ?? '',
+      usuario: this.configService.get<string>(USUARIO) ?? '',
+      clave: this.configService.get<string>(CLAVE) ?? '',
+      realm: this.configService.get<string>(REALM) ?? '',
+      grant_type: this.configService.get<string>(GRANT_TYPE) ?? '',
     };
     const response: AxiosResponse<TokenDto> = await this.client.post(
       '/auth/v2/login',
@@ -188,6 +196,32 @@ export class SatProxy {
     promise.success = true;
     promise.statusCode = response.status;
     promise.element = content.length == 0 ? undefined : content[0];
+    return promise;
+  }
+  async GetDeudaTributaria(code: string, type: string) {
+    const token = await this.getToken();
+    const config: AxiosRequestConfig = {
+      headers: {
+        Authorization: `Bearer ${token.element?.access_token}`,
+        IP: '172.168.1.1',
+      },
+      validateStatus: () => true,
+    };
+    const response: AxiosResponse<PlacaDto[]> = await this.client.get(
+      `/saldomatico/saldomatico/${type}/${code}/0/10/10`,
+      config,
+    );
+    const promise = new ApiResponseProxyDTO<PlacaDto[]>();
+    if (response.status != 200) {
+      promise.success = false;
+      promise.statusCode = response.status;
+      promise.url = '';
+      return promise;
+    }
+    const content = response.data;
+    promise.success = true;
+    promise.statusCode = response.status;
+    promise.element = content;
     return promise;
   }
 }

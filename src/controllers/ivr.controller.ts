@@ -70,4 +70,30 @@ export class IVRController {
     });
     res.send(response);
   }
+  @Get('process-deuda/:deudaId/type/:typeId')
+  async confirmarDeuda(
+    @Param('deudaId') deudaId: string,
+    @Param('typeId') typeId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const response = await this.ivrService.confirmarConsulta(deudaId, typeId);
+    res.set({
+      'Content-Type': 'audio/wav',
+      'Content-Disposition': 'attachment; filename="resultadoDeuda.wav"',
+    });
+    res.send(response.audio);
+  }
+  @Get('tributes/:codeId/type/:typeId')
+  async deudaInfo(
+    @Param('codeId') codeId: string,
+    @Param('typeId') typeId: string,
+    @Res() res: Response,
+  ) {
+    const response = await this.ivrService.GetDeudaInfo(codeId, typeId);
+    res.set({
+      'Content-Type': 'audio/wav',
+      'Content-Disposition': 'attachment; filename="resultado.wav"',
+    });
+    res.send(response);
+  }
 }

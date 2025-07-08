@@ -3,3 +3,6 @@ export class ConfirmacionDto {
   audio: Buffer;
   placa: string;
 }
+export class TypeConfirmacionDTO extends ConfirmacionDto {
+  type: string;
+}
