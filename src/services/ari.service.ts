@@ -6,6 +6,16 @@ import {
   ARI_PASSWORD,
   ARI_URL,
   ARI_USERNAME,
+  ASTERISK_RECORDINGS_URL,
+  ASTERISK_UPLOAD_URL,
+  ASTERISK_RECORDINGS_FORMAT,
+  TEMP_AUDIO_DIR,
+  TEMP_FILE_CLEANUP_TIMEOUT,
+  RECORDING_MAX_DURATION,
+  RECORDING_MAX_SILENCE,
+  RECORDING_FORMAT,
+  RECORDING_BEEP_ENABLED,
+  RECORDING_IF_EXISTS,
 } from 'src/shared/Constants';
 import * as https from 'https';
 import * as fs from 'fs';
@@ -17,16 +27,31 @@ export class AriService {
   private readonly logger = new Logger(AriService.name);
   private client: AxiosInstance;
   private readonly baseUrl: string;
+  private readonly tempDir: string;
+
   constructor(private readonly configService: ConfigService) {
     const username = this.configService.get<string>(ARI_USERNAME) ?? '';
     const password = this.configService.get<string>(ARI_PASSWORD) ?? '';
     this.baseUrl = this.configService.get<string>(ARI_URL) ?? '';
+
+    // Configurar directorio temporal
+    this.tempDir = this.configService.get<string>(TEMP_AUDIO_DIR) ?? './temp/audio';
+    this.ensureTempDirectory();
+
     this.client = axios.create({
       baseURL: this.baseUrl,
       auth: { username, password },
       httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     });
   }
+
+  private ensureTempDirectory() {
+    if (!fs.existsSync(this.tempDir)) {
+      fs.mkdirSync(this.tempDir, { recursive: true });
+      this.logger.log(`Directorio temporal creado: ${this.tempDir}`);
+    }
+  }
+
   async getChannels(): Promise<any[]> {
     try {
       const response = await this.client.get('/channels');
@@ -37,6 +62,7 @@ export class AriService {
       );
     }
   }
+
   async getBridges(): Promise<any[]> {
     try {
       const response = await this.client.get('/bridges');
@@ -47,6 +73,7 @@ export class AriService {
       );
     }
   }
+
   async getEnpoints(): Promise<any[]> {
     try {
       const response = await this.client.get('/endpoints');
@@ -57,6 +84,7 @@ export class AriService {
       );
     }
   }
+
   async getAsteriskInfo(): Promise<AesterisitkDTO> {
     try {
       const response = await this.client.get('/asterisk/info');
@@ -67,24 +95,33 @@ export class AriService {
       );
     }
   }
+
   async recordChannel(channelId: string, name: string): Promise<any> {
+    const maxDuration = this.configService.get<number>(RECORDING_MAX_DURATION) ?? 10;
+    const maxSilence = this.configService.get<number>(RECORDING_MAX_SILENCE) ?? 2;
+    const format = this.configService.get<string>(RECORDING_FORMAT) ?? 'wav';
+    const beep = this.configService.get<boolean>(RECORDING_BEEP_ENABLED) ?? true;
+    const ifExists = this.configService.get<string>(RECORDING_IF_EXISTS) ?? 'overwrite';
+
     const response = await this.client.post(
       `/channels/${channelId}/record`,
       null,
       {
         params: {
           name,
-          format: 'wav',
-          maxDurationSeconds: 10,
-          maxSilenceSeconds: 2,
-          beep: true,
-          ifExists: 'overwrite',
+          format,
+          maxDurationSeconds: maxDuration,
+          maxSilenceSeconds: maxSilence,
+          beep,
+          ifExists,
         },
       },
     );
-    console.log('response', response);
+
+    this.logger.log(`Grabacion iniciada: ${name} (${maxDuration}s max, ${maxSilence}s silence)`);
     return response.data;
   }
+
   async snoopChannel(channelId: string): Promise<any> {
     const snoopId = `snoop_${channelId}_${Date.now()}`;
     const response = await this.client.post(
@@ -98,9 +135,11 @@ export class AriService {
         },
       },
     );
-    console.log('response', response);
+
+    this.logger.log(`Snoop iniciado: ${snoopId}`);
     return response.data;
   }
+
   async playToChannel(channelId: string, mediaId: string): Promise<any> {
     const response = await this.client.post(
       `/channels/${channelId}/play`,
@@ -111,20 +150,15 @@ export class AriService {
         },
       },
     );
-    console.log('response', response);
+
+    this.logger.log(`Reproduccion iniciada: ${mediaId} en canal ${channelId}`);
     return response.data;
   }
 
-
-  /**
-   * Sale de la aplicación Stasis y devuelve el control a Asterisk
-   */
   async exitStasisApp(channelId: string): Promise<any> {
     try {
       this.logger.log(`Devolviendo canal ${channelId} a Asterisk dialplan`);
 
-      // const response = await this.client.delete(`/channels/${channelId}/stasis`);
-      // const response = await this.client.delete(`/channels/${channelId}/continue`);
       const response = await this.client.post(`/channels/${channelId}/continue`);
 
       this.logger.log(`Canal ${channelId} devuelto exitosamente`);
@@ -137,69 +171,76 @@ export class AriService {
     }
   }
 
-  /**
-   * Obtiene el archivo de audio grabado desde el disco
-   * Busca las grabaciones en /var/spool/asterisk/recording/
-   */
   async getRecording(recordingName: string): Promise<Buffer> {
     try {
-      // Descargar desde la VM via HTTP
-      const response = await axios.get(`http://192.168.1.100:8001/${recordingName}.wav`, {
+      const recordingsUrl = this.configService.get<string>(ASTERISK_RECORDINGS_URL) ?? 'http://localhost:8001';
+      const format = this.configService.get<string>(ASTERISK_RECORDINGS_FORMAT) ?? 'wav';
+
+      const url = `${recordingsUrl}/${recordingName}.${format}`;
+
+      const response = await axios.get(url, {
         responseType: 'arraybuffer'
       });
 
       const audioBuffer = Buffer.from(response.data);
-      this.logger.log(`Grabación descargada: ${audioBuffer.length} bytes`);
+      this.logger.log(`Grabacion descargada desde ${url}: ${audioBuffer.length} bytes`);
       return audioBuffer;
 
     } catch (error) {
-      this.logger.error(`Error descargando grabación: ${error.message}`);
+      this.logger.error(`Error descargando grabacion: ${error.message}`);
       throw new InternalServerErrorException(`Get Recording Error: ${error.message}`);
     }
   }
 
-  /**
-   * Detiene una grabación en curso (opcional)
-   */
   async stopRecording(recordingName: string): Promise<any> {
     try {
-      this.logger.log(`Deteniendo grabación: ${recordingName}`);
+      this.logger.log(`Deteniendo grabacion: ${recordingName}`);
 
       const response = await this.client.delete(`/recordings/live/${recordingName}`);
 
-      this.logger.log(` ${recordingName} detenida`);
+      this.logger.log(`Grabacion ${recordingName} detenida`);
       return response.data;
     } catch (error) {
-      this.logger.error(`Error deteniendo grabación: ${error.message}`);
+      this.logger.error(`Error deteniendo grabacion: ${error.message}`);
       throw new InternalServerErrorException(
         `Stop Recording Error: ${error.message}`
       );
     }
   }
 
-  /**
-   * Reproduce un archivo de audio desde un Buffer
-   * Útil para reproducir audio generado por TTS
-   */
   async playAudioBuffer(channelId: string, audioBuffer: Buffer, playbackId?: string): Promise<any> {
     try {
-      // Crear archivo temporal
-      const tempFile = `/tmp/tts_${channelId}_${Date.now()}.wav`;
-      fs.writeFileSync(tempFile, audioBuffer);
+      // 1. Generar nombre único para el archivo
+      const filename = `tts_${channelId}_${Date.now()}.wav`;
 
-      this.logger.log(`Reproduciendo audio en canal ${channelId}: ${tempFile}`);
+      // 2. Subir archivo al servidor Asterisk (se convierte automáticamente a 8000Hz)
+      await this.uploadAudioToAsterisk(audioBuffer, filename);
+
+      // 3. Reproducir desde el servidor Asterisk usando ruta absoluta
+      const finalPlaybackId = playbackId || `tts-${Date.now()}`;
 
       const response = await this.client.post(
-        `/channels/${channelId}/play/${playbackId || 'tts-' + Date.now()}`,
+        `/channels/${channelId}/play/${finalPlaybackId}`,
         null,
         {
           params: {
-            media: `sound:${tempFile.replace('.wav', '')}` // Asterisk no necesita la extensión
+            // Usar ruta absoluta sin extensión (Asterisk la agrega automáticamente)
+            media: `sound:/var/spool/asterisk/recording/${filename.replace('.wav', '')}`
           }
         }
       );
 
-      this.logger.log(`Audio iniciado en canal ${channelId}`);
+      this.logger.log(`Audio iniciado en canal ${channelId} con ID: ${finalPlaybackId}`);
+      this.logger.log(`Reproduciendo archivo: ${filename} (convertido a 8000Hz)`);
+
+      // 4. Programar limpieza del archivo en el servidor Asterisk (opcional)
+      const cleanupTimeout = this.configService.get<number>(TEMP_FILE_CLEANUP_TIMEOUT) ?? 30000;
+      setTimeout(() => {
+        this.cleanupAsteriskFile(filename).catch(err =>
+          this.logger.warn(`No se pudo limpiar archivo ${filename}: ${err.message}`)
+        );
+      }, cleanupTimeout);
+
       return response.data;
 
     } catch (error) {
@@ -210,4 +251,81 @@ export class AriService {
     }
   }
 
+  /**
+   * Subir archivo de audio al servidor Asterisk
+   * El servidor automáticamente convierte el audio a formato compatible (8000Hz)
+   */
+  private async uploadAudioToAsterisk(audioBuffer: Buffer, filename: string): Promise<void> {
+    try {
+      const uploadUrl = this.configService.get<string>(ASTERISK_UPLOAD_URL) ?? 'http://localhost:8001/upload';
+
+      this.logger.log(`Subiendo archivo TTS: ${filename} (${audioBuffer.length} bytes)`);
+
+      const response = await axios.post(uploadUrl, audioBuffer, {
+        headers: {
+          'Content-Type': 'audio/wav',
+          'Filename': filename
+        },
+        timeout: 15000 // 15 segundos timeout (mayor por la conversión)
+      });
+
+      // Verificar respuesta del servidor
+      if (response.data && response.data.status === 'success') {
+        this.logger.log(`Archivo subido y convertido exitosamente: ${filename}`);
+        this.logger.log(`Tamaño original: ${response.data.original_size}, convertido: ${response.data.converted_size}`);
+      } else {
+        this.logger.log(`Archivo subido: ${filename}`);
+      }
+
+    } catch (error) {
+      this.logger.error(`Error subiendo archivo a Asterisk: ${error.message}`);
+      if (error.response?.data) {
+        this.logger.error(`Respuesta del servidor: ${error.response.data}`);
+      }
+      throw new InternalServerErrorException(`Upload to Asterisk failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Limpiar archivo temporal del servidor Asterisk
+   * Nota: El servidor HTTP actual no soporta DELETE, así que esto es opcional
+   */
+  private async cleanupAsteriskFile(filename: string): Promise<void> {
+    try {
+      const baseUrl = this.configService.get<string>(ASTERISK_RECORDINGS_URL) ?? 'http://localhost:8001';
+
+      // Intentar eliminar archivo via DELETE (si el servidor lo soporta en el futuro)
+      await axios.delete(`${baseUrl}/${filename}`, {
+        timeout: 5000
+      });
+
+      this.logger.log(`Archivo temporal eliminado del servidor Asterisk: ${filename}`);
+
+    } catch (error) {
+      // No es crítico si falla la limpieza
+      this.logger.debug(`No se pudo eliminar archivo temporal (esto es normal): ${error.message}`);
+    }
+  }
+
+  /**
+   * Verificar estado del servidor Asterisk
+   */
+  async checkAsteriskServerStatus(): Promise<any> {
+    try {
+      const baseUrl = this.configService.get<string>(ASTERISK_RECORDINGS_URL) ?? 'http://localhost:8001';
+
+      const response = await axios.get(`${baseUrl}/status`, {
+        timeout: 5000
+      });
+
+      this.logger.log(`Estado del servidor Asterisk: ${response.data.status}`);
+      this.logger.log(`Herramientas de conversión: ${JSON.stringify(response.data.conversion_tools)}`);
+
+      return response.data;
+
+    } catch (error) {
+      this.logger.warn(`No se pudo verificar estado del servidor Asterisk: ${error.message}`);
+      return null;
+    }
+  }
 }

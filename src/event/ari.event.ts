@@ -8,6 +8,10 @@ import {
   ARI_PASSWORD,
   ARI_URL,
   ARI_USERNAME,
+  IVR_FILE_WRITE_DELAY,
+  IVR_PLAYBACK_TIMEOUT,
+  IVR_SESSION_CLEANUP_INTERVAL,
+  IVR_WEBSOCKET_RECONNECT_DELAY,
 } from 'src/shared/Constants';
 import * as WebSocket from 'ws';
 
@@ -27,13 +31,14 @@ export class AriEvent implements OnModuleInit {
 
   onModuleInit() {
     this.connectToARI();
-    // Limpiar sesiones expiradas cada 5 minutos
-    setInterval(() => this.cleanExpiredSessions(), 5 * 60 * 1000);
+
+    // Limpiar sesiones expiradas - intervalo configurable
+    const cleanupInterval = this.configService.get<number>(IVR_SESSION_CLEANUP_INTERVAL) ?? 300000; // 5 min default
+    setInterval(() => this.cleanExpiredSessions(), cleanupInterval);
   }
 
   /**
    * Conectar al WebSocket de Asterisk
-   * Esto se ejecuta una sola vez cuando inicia tu servidor
    */
   private connectToARI() {
     const ariApp = this.configService.get<string>(ARI_APPLICATION_NAME);
@@ -43,10 +48,10 @@ export class AriEvent implements OnModuleInit {
 
     const wsUrl = `${ariUrl}/events?api_key=${ariUser}:${ariPass}&app=${ariApp}`;
 
-    this.logger.log(`🔌 Conectando a ARI WebSocket: ${wsUrl}`);
+    this.logger.log(`Conectando a ARI WebSocket: ${wsUrl}`);
 
     this.ws = new WebSocket(wsUrl, {
-      rejectUnauthorized: false // Para certificados auto-firmados
+      rejectUnauthorized: false
     });
 
     this.ws.on('open', () => {
@@ -68,7 +73,8 @@ export class AriEvent implements OnModuleInit {
 
     this.ws.on('close', () => {
       this.logger.warn('Conexión WebSocket ARI cerrada. Reconectando...');
-      setTimeout(() => this.connectToARI(), 5000);
+      const reconnectDelay = this.configService.get<number>(IVR_WEBSOCKET_RECONNECT_DELAY) ?? 5000;
+      setTimeout(() => this.connectToARI(), reconnectDelay);
     });
   }
 
@@ -76,7 +82,7 @@ export class AriEvent implements OnModuleInit {
    * Distribuir eventos de Asterisk
    */
   private async handleAriEvent(event: any) {
-    this.logger.log(`📡 Evento ARI: ${event.type} - Canal: ${event.channel?.id}`);
+    this.logger.log(`Evento ARI: ${event.type} - Canal: ${event.channel?.id}`);
 
     switch (event.type) {
       case 'StasisStart':
@@ -92,18 +98,17 @@ export class AriEvent implements OnModuleInit {
         await this.handleDtmfReceived(event);
         break;
       default:
-        this.logger.log(`📋 Evento ignorado: ${event.type}`);
+        this.logger.log(`Evento ignorado: ${event.type}`);
     }
   }
 
   /**
    * Llamada llega desde Asterisk
-   * Solo cuando el dialplan ejecuta: Stasis(mi_ari_app, "placa") o Stasis(mi_ari_app, "papeleta")
    */
   private async handleStasisStart(event: any) {
     const channelId = event.channel.id;
     const channelName = event.channel.name;
-    const args = event.args; // ["placa"] o ["papeleta"]
+    const args = event.args;
 
     this.logger.log(`Nueva llamada - Canal: ${channelName} (${channelId})`);
     this.logger.log(`Tipo de consulta: ${args[0]}`);
@@ -112,7 +117,6 @@ export class AriEvent implements OnModuleInit {
     const session = new ChannelSession(channelId);
     this.activeChannels.set(channelId, session);
 
-    // Determinar qué tipo de consulta es
     if (args && args.length > 0) {
       const consultType = args[0];
 
@@ -137,15 +141,10 @@ export class AriEvent implements OnModuleInit {
     try {
       this.logger.log(`Iniciando consulta de PLACA para canal ${channelId}`);
 
-      // Generar nombre único para la grabación
       const recordingName = `placa_${channelId}_${Date.now()}`;
-
-      // Marcar en la sesión que está grabando placa
       session.startRecording('placa', recordingName);
 
-      // Iniciar grabación de 10 segundos máximo
       await this.ariService.recordChannel(channelId, recordingName);
-
       this.logger.log(`Grabación iniciada: ${recordingName}`);
 
     } catch (error) {
@@ -165,7 +164,6 @@ export class AriEvent implements OnModuleInit {
       session.startRecording('papeleta', recordingName);
 
       await this.ariService.recordChannel(channelId, recordingName);
-
       this.logger.log(`Grabación iniciada: ${recordingName}`);
 
     } catch (error) {
@@ -175,7 +173,7 @@ export class AriEvent implements OnModuleInit {
   }
 
   /**
-   * PASO 5: Grabación terminó - procesar con STT
+   * Grabación terminó - procesar con STT
    */
   private async handleRecordingFinished(event: any) {
     const recordingName = event.recording.name;
@@ -200,8 +198,9 @@ export class AriEvent implements OnModuleInit {
     this.logger.log(`Grabación terminada: ${recordingName} para canal ${targetChannelId}`);
 
     try {
-      //DELAY DE 1 SEGUNDO para que el archivo se escriba completamente
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Delay configurable para que el archivo se escriba completamente
+      const writeDelay = this.configService.get<number>(IVR_FILE_WRITE_DELAY) ?? 1000;
+      await new Promise(resolve => setTimeout(resolve, writeDelay));
 
       if (session.consultType === 'placa') {
         await this.processPlacaRecording(targetChannelId, session);
@@ -215,41 +214,34 @@ export class AriEvent implements OnModuleInit {
   }
 
   /**
-   * PASO 6A: Procesar grabación de PLACA
+   * Procesar grabación de PLACA
    */
   private async processPlacaRecording(channelId: string, session: ChannelSession) {
     try {
       this.logger.log(`Procesando audio de placa para canal ${channelId}`);
 
-      // Obtener archivo de audio del disco
       const audioBuffer = await this.ariService.getRecording(session.recordingName);
       this.logger.log(`Audio obtenido: ${audioBuffer.length} bytes`);
 
-      // Crear objeto File para tu servicio existente
       const audioFile = this.createMulterFile(audioBuffer, session.recordingName);
       this.logger.log(`Archivo Multer creado: ${audioFile.originalname}`);
 
-      // USAR SERVICIO EXISTENTE - confirmarPlaca hace STT + genera TTS confirmación
       this.logger.log(`Enviando audio al servicio confirmarPlaca...`);
       const confirmacion = await this.ivrService.confirmarPlaca(audioFile);
-      this.logger.log(`Respuesta de confirmarPlaca: ${JSON.stringify(confirmacion)}`);
+      this.logger.log(`Respuesta de confirmarPlaca: success=${confirmacion.success}, placa="${confirmacion.placa}"`);
 
       if (confirmacion.success) {
-        // STT funcionó - guardar placa extraída y reproducir confirmación
         session.setExtractedData(confirmacion.placa);
-
         this.logger.log(`Placa extraída: ${confirmacion.placa}`);
 
-        // Reproducir TTS: "¿Confirma que la placa es ABC123? Marque 1 para sí, 2 para no"
         await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
-
       } else {
-        // STT falló - reproducir error y volver a Asterisk
         this.logger.log(`No se pudo extraer placa`);
         await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
 
-        // Dar tiempo para que se reproduzca y volver a Asterisk
-        setTimeout(() => this.returnToAsterisk(channelId), 3000);
+        // Timeout configurable antes de volver a Asterisk
+        const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 3000;
+        setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
       }
 
     } catch (error) {
@@ -269,14 +261,11 @@ export class AriEvent implements OnModuleInit {
       const audioBuffer = await this.ariService.getRecording(session.recordingName);
       const audioFile = this.createMulterFile(audioBuffer, session.recordingName);
 
-      // USAR SERVICIO EXISTENTE
       const confirmacion = await this.ivrService.confirmarPapeleta(audioFile);
 
-      session.setExtractedData(confirmacion.placa); // En papeleta también usa .placa
-
+      session.setExtractedData(confirmacion.placa);
       this.logger.log(`Papeleta extraída: ${confirmacion.placa}`);
 
-      // Reproducir confirmación
       await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
 
     } catch (error) {
@@ -298,26 +287,23 @@ export class AriEvent implements OnModuleInit {
       return;
     }
 
-    this.logger.log(`DTMF recibido: ${digit} en canal: ${channelId}`);
+    this.logger.log(`DTMF recibido: "${digit}" en canal: ${channelId}, estado: ${session.currentState}`);
 
     if (session.currentState === 'waiting_confirmation') {
       if (digit === '1') {
-        // Confirmó - proceder con consulta SAT
         session.confirm();
         await this.processConfirmedQuery(channelId, session);
       } else if (digit === '2') {
-        // No confirmó - volver a Asterisk (podrían volver a intentar)
         session.reject();
         await this.returnToAsterisk(channelId);
       } else {
-        // Opción inválida - ignorar y esperar 1 o 2
         this.logger.log(`Opción inválida: ${digit}, esperando 1 o 2`);
       }
     }
   }
 
   /**
-   * PASO 8: Usuario confirmó - hacer consulta SAT y dar resultado
+   * Usuario confirmó - hacer consulta SAT y dar resultado
    */
   private async processConfirmedQuery(channelId: string, session: ChannelSession) {
     try {
@@ -326,22 +312,19 @@ export class AriEvent implements OnModuleInit {
       let resultAudio: Buffer;
 
       if (session.consultType === 'placa') {
-        // USAR TU SERVICIO EXISTENTE - placaInfo consulta SAT + genera TTS resultado
         resultAudio = await this.ivrService.placaInfo(session.extractedData);
       } else if (session.consultType === 'papeleta') {
-        // USAR TU SERVICIO EXISTENTE
         resultAudio = await this.ivrService.papeletaInfo(session.extractedData);
       } else {
         throw new Error(`Tipo de consulta desconocido: ${session.consultType}`);
       }
 
-      // Reproducir resultado final
       await this.ariService.playAudioBuffer(channelId, resultAudio);
-
       this.logger.log(`Resultado reproducido para canal ${channelId}`);
 
-      // Dar tiempo para que se reproduzca completamente y devolver a Asterisk
-      setTimeout(() => this.returnToAsterisk(channelId), 10000); // 10 segundos
+      // Timeout configurable para que se reproduzca completamente
+      const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 10000;
+      setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
 
     } catch (error) {
       this.logger.error(`Error en consulta confirmada: ${error.message}`);
@@ -356,7 +339,6 @@ export class AriEvent implements OnModuleInit {
     const channelId = event.channel.id;
     this.logger.log(`Llamada finalizada - Canal: ${channelId}`);
 
-    // Limpiar sesión
     this.activeChannels.delete(channelId);
   }
 
@@ -368,19 +350,16 @@ export class AriEvent implements OnModuleInit {
       this.logger.log(`Devolviendo canal ${channelId} a Asterisk`);
 
       await this.ariService.exitStasisApp(channelId);
-
-      // Limpiar sesión
       this.activeChannels.delete(channelId);
 
     } catch (error) {
       this.logger.error(`Error devolviendo a Asterisk: ${error.message}`);
-      // Aún así limpiar la sesión
       this.activeChannels.delete(channelId);
     }
   }
 
   /**
-   * Crear objeto File compatible con tus servicios existentes
+   * Crear objeto File compatible con servicios existentes
    */
   private createMulterFile(buffer: Buffer, filename: string): Express.Multer.File {
     const { Readable } = require('stream');
@@ -403,7 +382,7 @@ export class AriEvent implements OnModuleInit {
   }
 
   /**
-   * Limpiar sesiones expiradas cada 5 minutos
+   * Limpiar sesiones expiradas
    */
   private cleanExpiredSessions() {
     let cleaned = 0;

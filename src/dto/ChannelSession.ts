@@ -1,3 +1,7 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { IVR_SESSION_EXPIRY_TIME } from 'src/shared/Constants';
+
 export class ChannelSession {
   channelId: string;           // ID único del canal de Asterisk
   consultType: string;         // "placa" o "papeleta"
@@ -35,10 +39,12 @@ export class ChannelSession {
     this.currentState = 'rejected';
   }
 
-  isExpired(): boolean {
-    // Sesión expira después de 10 minutos
+  isExpired(configService?: ConfigService): boolean {
+    // Tiempo de expiración configurable (por defecto 10 minutos)
+    const expiryTime = configService?.get<number>(IVR_SESSION_EXPIRY_TIME) ?? 600000; // 10 min
+
     const now = new Date();
     const diff = now.getTime() - this.createdAt.getTime();
-    return diff > 10 * 60 * 1000; // 10 minutos
+    return diff > expiryTime;
   }
 }
