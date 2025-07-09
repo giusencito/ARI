@@ -31,7 +31,7 @@ export class IVRService {
       );
       promise.success = false;
       promise.audio = invalid;
-      promise.placa = stt.element?.plate ?? '';
+      promise.placa = stt.element?.plate.replace('-', '') ?? '';
       return promise;
     }
     const valid = await this.ResponseTTS(
@@ -165,5 +165,27 @@ export class IVRService {
         `Error con  la peticion para mandar el texto genero un ${audio.statusCode}`,
       );
     return audio.element;
+  }
+  async GetPapeletaPendiente(placaId: string) {
+    const bullet = await this.satProxy.GetPapeletas(placaId);
+    if (!bullet.success)
+      throw new InternalServerErrorException(
+        `Error con  la consulta de sat genero un ${bullet.statusCode}`,
+      );
+    const pendientes = bullet.element?.filter(
+      (item) => item.estado === 'Pendiente',
+    );
+    const pendiente = pendientes?.[0] ?? null;
+    if (pendiente == null) {
+      const audioSin = await this.ResponseTTS(
+        'no se encontraron papeletas pendientes',
+      );
+      return audioSin;
+    }
+    const message = `la papeleta  número ${pendiente.documento} tiene un monto de ${pendiente.monto} soles. 
+    La fecha de vencimiento para el pago con el 50% de descuento es ${getDateString(pendiente.fechavencimiento)}
+    La fecha de imposición es ${getDateString(pendiente.fechainfraccion)}`;
+    const response = await this.ResponseTTS(message);
+    return response;
   }
 }
