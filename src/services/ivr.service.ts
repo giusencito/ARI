@@ -18,6 +18,15 @@ export class IVRService {
     private readonly audioProxy: AudioProxy,
     private readonly satProxy: SatProxy,
   ) {}
+
+  /**
+   * Limpiar formato de placa o papeleta
+   * Remueve guiones, espacios y convierte a mayúsculas
+   */
+  private cleanFormat(input: string): string {
+    return input.replace(/[-\s]/g, '').toUpperCase();
+  }
+
   async confirmarPlaca(file: Express.Multer.File): Promise<ConfirmacionDto> {
     const stt = await this.audioProxy.stt(file);
     if (!stt.success)
@@ -42,14 +51,20 @@ export class IVRService {
     promise.placa = stt.element?.plate ?? '';
     return promise;
   }
+
   async placaInfo(placaId: string): Promise<Buffer> {
-    const bullets = await this.satProxy.GetPapeletas(placaId);
+    // Limpiar formato de placa antes de consultar
+    const cleanPlaca = this.cleanFormat(placaId);
+
+    console.log(`Placa original: "${placaId}" -> limpia: "${cleanPlaca}"`);
+
+    const bullets = await this.satProxy.GetPapeletas(cleanPlaca);
     if (!bullets.success)
       throw new InternalServerErrorException(
         `Error con  la consulta de sat genero un ${bullets.statusCode}`,
       );
     const bulletsArray = bullets.element ?? [];
-    let message = `la placa ${placaId} cuenta con ${bulletsArray.length} papeletas`;
+    let message = `la placa ${cleanPlaca} cuenta con ${bulletsArray.length} papeletas`;
     if (bulletsArray.length > 0) {
       const sum = bulletsArray.reduce((acc, element) => acc + element.monto, 0);
       const roundedSum = Math.round(sum * 100) / 100;
@@ -58,6 +73,7 @@ export class IVRService {
     const response = await this.ResponseTTS(message);
     return response;
   }
+
   async validate(file: Express.Multer.File): Promise<AnswerValidateDto> {
     const checkValidation = await this.audioProxy.procesarAudio(file);
     if (!checkValidation.success)
@@ -84,6 +100,7 @@ export class IVRService {
     promise.confirmation = checkValidation.element.confirmation;
     return promise;
   }
+
   async confirmarPapeleta(file: Express.Multer.File) {
     const stt = await this.audioProxy.procesarAudio(file);
     if (!stt.success)
@@ -99,8 +116,14 @@ export class IVRService {
     promise.placa = papeleta ?? '';
     return promise;
   }
-  async papeletaInfo(placaId: string): Promise<Buffer> {
-    const bullet = await this.satProxy.GetPapeleta(placaId);
+
+  async papeletaInfo(papeletaId: string): Promise<Buffer> {
+    // Limpiar formato de papeleta antes de consultar
+    const cleanPapeleta = this.cleanFormat(papeletaId);
+
+    console.log(`Papeleta original: "${papeletaId}" -> limpia: "${cleanPapeleta}"`);
+
+    const bullet = await this.satProxy.GetPapeleta(cleanPapeleta);
     if (!bullet.success)
       throw new InternalServerErrorException(
         `Error con  la consulta de sat genero un ${bullet.statusCode}`,
@@ -117,6 +140,7 @@ export class IVRService {
     const response = await this.ResponseTTS(message);
     return response;
   }
+
   async confirmarConsulta(code: string, type: string) {
     const promise = new TypeConfirmacionDTO();
     const message = `Usted digito ${code}... ${opcionConfirmar}`;
@@ -127,8 +151,14 @@ export class IVRService {
     promise.type = type;
     return promise;
   }
+
   async GetDeudaInfo(code: string, type: string): Promise<Buffer> {
-    const tribute = await this.satProxy.GetDeudaTributaria(code, type);
+    // Limpiar formato antes de consultar deudas tributarias
+    const cleanCode = this.cleanFormat(code);
+
+    console.log(`Código original: "${code}" -> limpio: "${cleanCode}"`);
+
+    const tribute = await this.satProxy.GetDeudaTributaria(cleanCode, type);
     if (!tribute.success)
       throw new InternalServerErrorException(
         `Error con  la consulta de sat genero un ${tribute.statusCode}`,
@@ -158,6 +188,7 @@ export class IVRService {
     const response = await this.ResponseTTS(message);
     return response;
   }
+
   async ResponseTTS(message: string) {
     const audio = await this.audioProxy.tts(message);
     if (audio.element == null || !audio.success)

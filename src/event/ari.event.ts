@@ -231,17 +231,43 @@ export class AriEvent implements OnModuleInit {
       this.logger.log(`Respuesta de confirmarPlaca: success=${confirmacion.success}, placa="${confirmacion.placa}"`);
 
       if (confirmacion.success) {
+        // STT exitoso - proceder con confirmación
         session.setExtractedData(confirmacion.placa);
         this.logger.log(`Placa extraída: ${confirmacion.placa}`);
 
         await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
       } else {
-        this.logger.log(`No se pudo extraer placa`);
-        await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+        // STT falló - ofrecer reintento
+        this.logger.log(`No se pudo extraer placa, ofreciendo reintento`);
 
-        // Timeout configurable antes de volver a Asterisk
-        const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 3000;
-        setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
+        // Incrementar contador de reintentos
+        if (!session.retryCount) {
+          session.retryCount = 0;
+        }
+        session.retryCount++;
+
+        // Máximo 3 intentos
+        if (session.retryCount <= 3) {
+          this.logger.log(`Intento ${session.retryCount} de 3`);
+
+          // Reproducir mensaje de error + reintento
+          await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+
+          // Esperar y reiniciar grabación
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          await this.restartRecording(channelId, session);
+        } else {
+          // Máximo de intentos alcanzado
+          this.logger.log(`Máximo de intentos alcanzado para canal ${channelId}`);
+
+          const maxAttemptsMessage = 'Se ha alcanzado el máximo de intentos. La llamada será transferida a un operador';
+          const maxAttemptsAudio = await this.ivrService.ResponseTTS(maxAttemptsMessage);
+          await this.ariService.playAudioBuffer(channelId, maxAttemptsAudio);
+
+          // Esperar y finalizar
+          const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 5000;
+          setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
+        }
       }
 
     } catch (error) {
@@ -263,10 +289,33 @@ export class AriEvent implements OnModuleInit {
 
       const confirmacion = await this.ivrService.confirmarPapeleta(audioFile);
 
-      session.setExtractedData(confirmacion.placa);
-      this.logger.log(`Papeleta extraída: ${confirmacion.placa}`);
+      if (confirmacion.success) {
+        session.setExtractedData(confirmacion.placa);
+        this.logger.log(`Papeleta extraída: ${confirmacion.placa}`);
 
-      await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+        await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+      } else {
+        // Lógica de reintento similar a processPlacaRecording
+        if (!session.retryCount) {
+          session.retryCount = 0;
+        }
+        session.retryCount++;
+
+        if (session.retryCount <= 3) {
+          this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
+
+          await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          await this.restartRecording(channelId, session);
+        } else {
+          const maxAttemptsMessage = 'Se ha alcanzado el máximo de intentos. La llamada será transferida a un operador';
+          const maxAttemptsAudio = await this.ivrService.ResponseTTS(maxAttemptsMessage);
+          await this.ariService.playAudioBuffer(channelId, maxAttemptsAudio);
+
+          const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 5000;
+          setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
+        }
+      }
 
     } catch (error) {
       this.logger.error(`Error procesando papeleta: ${error.message}`);
@@ -291,14 +340,73 @@ export class AriEvent implements OnModuleInit {
 
     if (session.currentState === 'waiting_confirmation') {
       if (digit === '1') {
+        // Confirmar - continuar con consulta
         session.confirm();
         await this.processConfirmedQuery(channelId, session);
       } else if (digit === '2') {
+        // Rechazar - volver a grabar
+        this.logger.log(`Usuario rechazó confirmación para ${session.consultType}, reiniciando grabación`);
         session.reject();
-        await this.returnToAsterisk(channelId);
+        await this.restartRecording(channelId, session);
       } else {
-        this.logger.log(`Opción inválida: ${digit}, esperando 1 o 2`);
+        // Opción inválida - reproducir instrucción de nuevo
+        this.logger.log(`Opción inválida: ${digit}, reproduciendo instrucciones nuevamente`);
+        await this.playInvalidOptionMessage(channelId, session);
       }
+    }
+  }
+
+  /**
+   * Reiniciar grabación cuando usuario rechaza confirmación
+   */
+  private async restartRecording(channelId: string, session: ChannelSession) {
+    try {
+      this.logger.log(`Reiniciando grabación para ${session.consultType} en canal ${channelId}`);
+
+      // Reproducir mensaje de reintento
+      const retryMessage = session.consultType === 'placa'
+        ? 'Por favor, diga nuevamente su placa vehicular'
+        : 'Por favor, diga nuevamente su número de papeleta';
+
+      const retryAudio = await this.ivrService.ResponseTTS(retryMessage);
+      await this.ariService.playAudioBuffer(channelId, retryAudio);
+
+      // Esperar un momento para que se reproduzca
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Generar nuevo nombre de grabación
+      const newRecordingName = `${session.consultType}_${channelId}_${Date.now()}_retry`;
+
+      // Actualizar sesión
+      session.startRecording(session.consultType as 'placa' | 'papeleta', newRecordingName);
+
+      // Iniciar nueva grabación
+      await this.ariService.recordChannel(channelId, newRecordingName);
+
+      this.logger.log(`Nueva grabación iniciada: ${newRecordingName}`);
+
+    } catch (error) {
+      this.logger.error(`Error reiniciando grabación: ${error.message}`);
+      await this.returnToAsterisk(channelId);
+    }
+  }
+
+  /**
+   * Reproducir mensaje de opción inválida
+   */
+  private async playInvalidOptionMessage(channelId: string, session: ChannelSession) {
+    try {
+      const invalidMessage = `Opción inválida. Confirme que la ${session.consultType} es ${session.extractedData}. Marque 1 para confirmar o 2 para volver a intentar`;
+
+      const invalidAudio = await this.ivrService.ResponseTTS(invalidMessage);
+      await this.ariService.playAudioBuffer(channelId, invalidAudio);
+
+      // Mantener el estado para esperar nueva confirmación
+      this.logger.log(`Esperando confirmación válida (1 o 2) para canal ${channelId}`);
+
+    } catch (error) {
+      this.logger.error(`Error reproduciendo mensaje de opción inválida: ${error.message}`);
+      await this.returnToAsterisk(channelId);
     }
   }
 

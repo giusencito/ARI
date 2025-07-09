@@ -9,6 +9,7 @@ export class ChannelSession {
   extractedData: string;       // Lo que extrajo el STT: "ABC123" o "E123456"
   recordingName: string;       // Nombre del archivo de grabación
   createdAt: Date;            // Para limpiar sesiones viejas
+  retryCount: number;         // Contador de reintentos para STT
 
   constructor(channelId: string) {
     this.channelId = channelId;
@@ -17,6 +18,7 @@ export class ChannelSession {
     this.extractedData = '';
     this.recordingName = '';
     this.createdAt = new Date();
+    this.retryCount = 0;
   }
 
   // Métodos útiles para cambiar estados
@@ -24,6 +26,7 @@ export class ChannelSession {
     this.consultType = type;
     this.currentState = 'recording';
     this.recordingName = recordingName;
+    // No resetear retryCount aquí para mantener el contador
   }
 
   setExtractedData(data: string) {
@@ -37,6 +40,15 @@ export class ChannelSession {
 
   reject() {
     this.currentState = 'rejected';
+    // Resetear datos extraídos cuando se rechaza
+    this.extractedData = '';
+  }
+
+  resetForRetry() {
+    this.currentState = 'initial';
+    this.extractedData = '';
+    this.recordingName = '';
+    // Mantener retryCount para tracking
   }
 
   isExpired(configService?: ConfigService): boolean {
@@ -46,5 +58,9 @@ export class ChannelSession {
     const now = new Date();
     const diff = now.getTime() - this.createdAt.getTime();
     return diff > expiryTime;
+  }
+
+  hasExceededMaxRetries(maxRetries: number = 3): boolean {
+    return this.retryCount >= maxRetries;
   }
 }
