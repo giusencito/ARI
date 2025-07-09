@@ -75,7 +75,8 @@ export class AriService {
         params: {
           name,
           format: 'wav',
-          maxDurationSeconds: 60,
+          maxDurationSeconds: 10,
+          maxSilenceSeconds: 2,
           beep: true,
           ifExists: 'overwrite',
         },
@@ -122,7 +123,9 @@ export class AriService {
     try {
       this.logger.log(`Devolviendo canal ${channelId} a Asterisk dialplan`);
 
-      const response = await this.client.delete(`/channels/${channelId}/stasis`);
+      // const response = await this.client.delete(`/channels/${channelId}/stasis`);
+      // const response = await this.client.delete(`/channels/${channelId}/continue`);
+      const response = await this.client.post(`/channels/${channelId}/continue`);
 
       this.logger.log(`Canal ${channelId} devuelto exitosamente`);
       return response.data;
@@ -140,28 +143,18 @@ export class AriService {
    */
   async getRecording(recordingName: string): Promise<Buffer> {
     try {
-      this.logger.log(`📁 Obteniendo grabación: ${recordingName}`);
+      // Descargar desde la VM via HTTP
+      const response = await axios.get(`http://192.168.1.100:8001/${recordingName}.wav`, {
+        responseType: 'arraybuffer'
+      });
 
-      // Asterisk guarda las grabaciones aquí por defecto
-      const recordingPath = path.join('/var/spool/asterisk/recording', `${recordingName}.wav`);
-
-      // Verificar si el archivo existe
-      if (!fs.existsSync(recordingPath)) {
-        this.logger.error(`Archivo no encontrado: ${recordingPath}`);
-        throw new InternalServerErrorException(`Recording file not found: ${recordingName}`);
-      }
-
-      // Leer el archivo como Buffer
-      const audioBuffer = fs.readFileSync(recordingPath);
-
-      this.logger.log(`Grabación obtenida: ${audioBuffer.length} bytes`);
+      const audioBuffer = Buffer.from(response.data);
+      this.logger.log(`Grabación descargada: ${audioBuffer.length} bytes`);
       return audioBuffer;
 
     } catch (error) {
-      this.logger.error(`Error obteniendo grabación: ${error.message}`);
-      throw new InternalServerErrorException(
-        `Get Recording Error: ${error.message}`
-      );
+      this.logger.error(`Error descargando grabación: ${error.message}`);
+      throw new InternalServerErrorException(`Get Recording Error: ${error.message}`);
     }
   }
 
@@ -188,33 +181,18 @@ export class AriService {
    * Reproduce un archivo de audio desde un Buffer
    * Útil para reproducir audio generado por TTS
    */
-  async playAudioBuffer(channelId: string, audioBuffer: Buffer, playbackId?: string): Promise<any> {
-    try {
-      // Crear archivo temporal
-      const tempFile = `/tmp/tts_${channelId}_${Date.now()}.wav`;
-      fs.writeFileSync(tempFile, audioBuffer);
+  async playAudioBuffer(channelId: string, audioBuffer: Buffer): Promise<any> {
+    // Opción 1: Subir archivo a Asterisk via API
+    await axios.post(`http://192.168.1.100:8001/sounds/upload`, audioBuffer, {
+      headers: { 'Content-Type': 'audio/wav' }
+    });
 
-      this.logger.log(`Reproduciendo audio en canal ${channelId}: ${tempFile}`);
-
-      const response = await this.client.post(
-        `/channels/${channelId}/play/${playbackId || 'tts-' + Date.now()}`,
-        null,
-        {
-          params: {
-            media: `sound:${tempFile.replace('.wav', '')}` // Asterisk no necesita la extensión
-          }
-        }
-      );
-
-      this.logger.log(`Audio iniciado en canal ${channelId}`);
-      return response.data;
-
-    } catch (error) {
-      this.logger.error(`Error reproduciendo audio: ${error.message}`);
-      throw new InternalServerErrorException(
-        `Play Audio Error: ${error.message}`
-      );
-    }
+    // Opción 2: Reproducir directamente desde stream
+    const response = await this.client.post(`/channels/${channelId}/play`, null, {
+      params: {
+        media: `http://nestjs-server/tts-stream/${filename}`
+      }
+    });
   }
 
 }

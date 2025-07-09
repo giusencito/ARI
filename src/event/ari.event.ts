@@ -105,8 +105,8 @@ export class AriEvent implements OnModuleInit {
     const channelName = event.channel.name;
     const args = event.args; // ["placa"] o ["papeleta"]
 
-    this.logger.log(`🎧 Nueva llamada - Canal: ${channelName} (${channelId})`);
-    this.logger.log(`📋 Tipo de consulta: ${args[0]}`);
+    this.logger.log(`Nueva llamada - Canal: ${channelName} (${channelId})`);
+    this.logger.log(`Tipo de consulta: ${args[0]}`);
 
     // Crear sesión para recordar qué está pasando
     const session = new ChannelSession(channelId);
@@ -200,6 +200,9 @@ export class AriEvent implements OnModuleInit {
     this.logger.log(`Grabación terminada: ${recordingName} para canal ${targetChannelId}`);
 
     try {
+      //DELAY DE 1 SEGUNDO para que el archivo se escriba completamente
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       if (session.consultType === 'placa') {
         await this.processPlacaRecording(targetChannelId, session);
       } else if (session.consultType === 'papeleta') {
@@ -220,12 +223,16 @@ export class AriEvent implements OnModuleInit {
 
       // Obtener archivo de audio del disco
       const audioBuffer = await this.ariService.getRecording(session.recordingName);
+      this.logger.log(`Audio obtenido: ${audioBuffer.length} bytes`);
 
       // Crear objeto File para tu servicio existente
       const audioFile = this.createMulterFile(audioBuffer, session.recordingName);
+      this.logger.log(`Archivo Multer creado: ${audioFile.originalname}`);
 
-      // USAR TU SERVICIO EXISTENTE - confirmarPlaca hace STT + genera TTS confirmación
+      // USAR SERVICIO EXISTENTE - confirmarPlaca hace STT + genera TTS confirmación
+      this.logger.log(`Enviando audio al servicio confirmarPlaca...`);
       const confirmacion = await this.ivrService.confirmarPlaca(audioFile);
+      this.logger.log(`Respuesta de confirmarPlaca: ${JSON.stringify(confirmacion)}`);
 
       if (confirmacion.success) {
         // STT funcionó - guardar placa extraída y reproducir confirmación
@@ -246,8 +253,9 @@ export class AriEvent implements OnModuleInit {
       }
 
     } catch (error) {
-      this.logger.error(`Error procesando placa: ${error.message}`);
-      await this.returnToAsterisk(channelId);
+      this.logger.error(`Error en processPlacaRecording: ${error.message}`);
+      this.logger.error(`Stack trace: ${error.stack}`);
+      throw error;
     }
   }
 
@@ -278,7 +286,7 @@ export class AriEvent implements OnModuleInit {
   }
 
   /**
-   * PASO 7: Usuario presiona 1 o 2 para confirmar
+   * Usuario presiona 1 o 2 para confirmar
    */
   private async handleDtmfReceived(event: any) {
     const channelId = event.channel.id;
