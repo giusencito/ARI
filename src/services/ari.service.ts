@@ -8,6 +8,7 @@ import {
   ARI_USERNAME,
   ASTERISK_RECORDINGS_URL,
   ASTERISK_UPLOAD_URL,
+  ASTERISK_API_KEY,
   ASTERISK_RECORDINGS_FORMAT,
   TEMP_AUDIO_DIR,
   TEMP_FILE_CLEANUP_TIMEOUT,
@@ -175,11 +176,15 @@ export class AriService {
     try {
       const recordingsUrl = this.configService.get<string>(ASTERISK_RECORDINGS_URL) ?? 'http://localhost:8001';
       const format = this.configService.get<string>(ASTERISK_RECORDINGS_FORMAT) ?? 'wav';
+      const apiKey = this.configService.get<string>(ASTERISK_API_KEY) ?? 'dev-asterisk-key-12345';
 
       const url = `${recordingsUrl}/${recordingName}.${format}`;
 
       const response = await axios.get(url, {
-        responseType: 'arraybuffer'
+        responseType: 'arraybuffer',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
+        }
       });
 
       const audioBuffer = Buffer.from(response.data);
@@ -258,18 +263,19 @@ export class AriService {
   private async uploadAudioToAsterisk(audioBuffer: Buffer, filename: string): Promise<void> {
     try {
       const uploadUrl = this.configService.get<string>(ASTERISK_UPLOAD_URL) ?? 'http://localhost:8001/upload';
+      const apiKey = this.configService.get<string>(ASTERISK_API_KEY) ?? 'dev-asterisk-key-12345';
 
       this.logger.log(`Subiendo archivo TTS: ${filename} (${audioBuffer.length} bytes)`);
 
       const response = await axios.post(uploadUrl, audioBuffer, {
         headers: {
           'Content-Type': 'audio/wav',
-          'Filename': filename
+          'Filename': filename,
+          'Authorization': `Bearer ${apiKey}`
         },
-        timeout: 15000 // 15 segundos timeout (mayor por la conversión)
+        timeout: 15000
       });
 
-      // Verificar respuesta del servidor
       if (response.data && response.data.status === 'success') {
         this.logger.log(`Archivo subido y convertido exitosamente: ${filename}`);
         this.logger.log(`Tamaño original: ${response.data.original_size}, convertido: ${response.data.converted_size}`);
@@ -279,8 +285,11 @@ export class AriService {
 
     } catch (error) {
       this.logger.error(`Error subiendo archivo a Asterisk: ${error.message}`);
+      if (error.response?.status === 401) {
+        this.logger.error(`Error de autenticación: Verificar ASTERISK_API_KEY`);
+      }
       if (error.response?.data) {
-        this.logger.error(`Respuesta del servidor: ${error.response.data}`);
+        this.logger.error(`Respuesta del servidor: ${JSON.stringify(error.response.data)}`);
       }
       throw new InternalServerErrorException(`Upload to Asterisk failed: ${error.message}`);
     }
@@ -313,13 +322,18 @@ export class AriService {
   async checkAsteriskServerStatus(): Promise<any> {
     try {
       const baseUrl = this.configService.get<string>(ASTERISK_RECORDINGS_URL) ?? 'http://localhost:8001';
+      const apiKey = this.configService.get<string>(ASTERISK_API_KEY) ?? 'dev-asterisk-key-12345';
 
       const response = await axios.get(`${baseUrl}/status`, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
+        },
         timeout: 5000
       });
 
       this.logger.log(`Estado del servidor Asterisk: ${response.data.status}`);
-      this.logger.log(`Herramientas de conversión: ${JSON.stringify(response.data.conversion_tools)}`);
+      this.logger.log(`Versión: ${response.data.version}`);
+      this.logger.log(`Seguridad habilitada: ${response.data.security?.authentication}`);
 
       return response.data;
 
