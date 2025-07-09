@@ -181,18 +181,33 @@ export class AriService {
    * Reproduce un archivo de audio desde un Buffer
    * Útil para reproducir audio generado por TTS
    */
-  async playAudioBuffer(channelId: string, audioBuffer: Buffer): Promise<any> {
-    // Opción 1: Subir archivo a Asterisk via API
-    await axios.post(`http://192.168.1.100:8001/sounds/upload`, audioBuffer, {
-      headers: { 'Content-Type': 'audio/wav' }
-    });
+  async playAudioBuffer(channelId: string, audioBuffer: Buffer, playbackId?: string): Promise<any> {
+    try {
+      // Crear archivo temporal
+      const tempFile = `/tmp/tts_${channelId}_${Date.now()}.wav`;
+      fs.writeFileSync(tempFile, audioBuffer);
 
-    // Opción 2: Reproducir directamente desde stream
-    const response = await this.client.post(`/channels/${channelId}/play`, null, {
-      params: {
-        media: `http://nestjs-server/tts-stream/${filename}`
-      }
-    });
+      this.logger.log(`Reproduciendo audio en canal ${channelId}: ${tempFile}`);
+
+      const response = await this.client.post(
+        `/channels/${channelId}/play/${playbackId || 'tts-' + Date.now()}`,
+        null,
+        {
+          params: {
+            media: `sound:${tempFile.replace('.wav', '')}` // Asterisk no necesita la extensión
+          }
+        }
+      );
+
+      this.logger.log(`Audio iniciado en canal ${channelId}`);
+      return response.data;
+
+    } catch (error) {
+      this.logger.error(`Error reproduciendo audio: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Play Audio Error: ${error.message}`
+      );
+    }
   }
 
 }
