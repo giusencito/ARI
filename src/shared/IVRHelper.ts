@@ -22,3 +22,16 @@ export const ImpuestoVehicular = '';
 export const ImpuestoPredial = 'Imp. Predial';
 export const Arbitrios = 'Arbitrios';
 export const Multatributaria = '';
+export const fortmatText = (plate: string): string => {
+  if (!plate) return plate;
+  const normal = plate.replace(
+    /\b([A-Z0-9]+(?:[\s\.,\-]+[A-Z0-9]+)+)\b/gi,
+    (match) => match.replace(/[\s\.,\-]/g, ''),
+  );
+  return normal.toUpperCase();
+};
+export const joinText = (text: string): string => {
+  if (!text) return text;
+  const cambio = text.replace(/(.)/g, '$1 ').trim();
+  return cambio;
+};
