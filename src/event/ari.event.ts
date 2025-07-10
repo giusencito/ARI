@@ -220,6 +220,11 @@ export class AriEvent implements OnModuleInit {
     try {
       this.logger.log(`Procesando audio de placa para canal ${channelId}`);
 
+      // 1. Mover archivo desde /var/spool/asterisk/recording/ a /tmp/asterisk/stt/
+      await this.ariService.moveRecordingToSTTDirectory(session.recordingName);
+      this.logger.log(`Archivo movido a /tmp/asterisk/stt/: ${session.recordingName}`);
+
+      // 2. Descargar desde /tmp/asterisk/stt/
       const audioBuffer = await this.ariService.getRecording(session.recordingName);
       this.logger.log(`Audio obtenido: ${audioBuffer.length} bytes`);
 
@@ -236,6 +241,7 @@ export class AriEvent implements OnModuleInit {
         this.logger.log(`Placa extraída: ${confirmacion.placa}`);
 
         await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+
       } else {
         // STT falló - ofrecer reintento
         this.logger.log(`No se pudo extraer placa, ofreciendo reintento`);
@@ -284,6 +290,11 @@ export class AriEvent implements OnModuleInit {
     try {
       this.logger.log(`Procesando audio de papeleta para canal ${channelId}`);
 
+      // 1. Mover archivo desde /var/spool/asterisk/recording/ a /tmp/asterisk/stt/
+      await this.ariService.moveRecordingToSTTDirectory(session.recordingName);
+      this.logger.log(`Archivo movido a /tmp/asterisk/stt/: ${session.recordingName}`);
+
+      // 2. Descargar desde /tmp/asterisk/stt/
       const audioBuffer = await this.ariService.getRecording(session.recordingName);
       const audioFile = this.createMulterFile(audioBuffer, session.recordingName);
 
@@ -294,6 +305,7 @@ export class AriEvent implements OnModuleInit {
         this.logger.log(`Papeleta extraída: ${confirmacion.placa}`);
 
         await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+
       } else {
         // Lógica de reintento similar a processPlacaRecording
         if (!session.retryCount) {
@@ -305,6 +317,7 @@ export class AriEvent implements OnModuleInit {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
           await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+
           await new Promise(resolve => setTimeout(resolve, 2000));
           await this.restartRecording(channelId, session);
         } else {
@@ -429,6 +442,8 @@ export class AriEvent implements OnModuleInit {
 
       await this.ariService.playAudioBuffer(channelId, resultAudio);
       this.logger.log(`Resultado reproducido para canal ${channelId}`);
+
+      // Nota: Los archivos en /tmp/asterisk/ se limpian automáticamente por el OS
 
       // Timeout configurable para que se reproduzca completamente
       const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 10000;
