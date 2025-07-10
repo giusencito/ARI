@@ -163,6 +163,9 @@ export class AriService {
       if (extension) params.extension = extension;
       if (priority) params.priority = priority;
 
+      this.logger.log(`Parámetros ARI: ${JSON.stringify(params)}`);
+      this.logger.log(`URL completa: DELETE /channels/${channelId} con params: ${JSON.stringify(params)}`);
+
       const response = await this.client.delete(`/channels/${channelId}`, { params });
 
       const contextInfo = context ? ` a ${context},${extension || 's'},${priority || 1}` : '';

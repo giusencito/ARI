@@ -433,7 +433,7 @@ export class AriEvent implements OnModuleInit {
       // Timeout configurable para que se reproduzca completamente
       const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 10000;
       setTimeout(() => {
-        this.returnToIVRContext(channelId, 'horarios');
+        this.returnToIVRContext(channelId, 'retornoivr3');
       }, playbackTimeout);
 
     } catch (error) {
