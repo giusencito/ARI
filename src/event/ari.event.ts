@@ -424,7 +424,7 @@ export class AriEvent implements OnModuleInit {
   }
 
   /**
-   * Usuario confirmó - hacer consulta SAT y dar resultado
+   * Usuario confirmó - hacer consulta SAT y dar resultado + volver al IVR
    */
   private async processConfirmedQuery(channelId: string, session: ChannelSession) {
     try {
@@ -440,15 +440,16 @@ export class AriEvent implements OnModuleInit {
         throw new Error(`Tipo de consulta desconocido: ${session.consultType}`);
       }
 
+      // Reproducir resultado
       await this.ariService.playAudioBuffer(channelId, resultAudio);
       this.logger.log(`Resultado reproducido para canal ${channelId}`);
 
-      // Nota: Los archivos en /tmp/asterisk/ se limpian automáticamente por el OS
+      // Usar el mismo timeout que usas para otros playbacks
+      const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 25000;
 
-      // Timeout configurable para que se reproduzca completamente
-      const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 10000;
       setTimeout(() => {
-        this.returnToIVRContext(channelId, 'retornoivr3');
+        // Devolver al contexto retornoivr para que maneje el menú post-consulta
+        this.returnToIVRContext(channelId, 'retornoivr', 's', 1);
       }, playbackTimeout);
 
     } catch (error) {
