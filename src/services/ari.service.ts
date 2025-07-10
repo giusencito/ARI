@@ -162,16 +162,43 @@ export class AriService {
     return response.data;
   }
 
+  /**
+   * Salir de Stasis app y devolver al dialplan de Asterisk
+   */
   async exitStasisApp(channelId: string, context?: string, extension?: string, priority?: number): Promise<any> {
     try {
-      const response = await this.client.delete(`/channels/${channelId}`);
-      this.logger.log(`Canal ${channelId} devuelto a Asterisk (método original)`);
-      return response.data;
+      if (context && extension && priority) {
+        // Devolver a contexto específico
+        this.logger.log(`Devolviendo canal ${channelId} a contexto: ${context},${extension},${priority}`);
+
+        const response = await this.client.post(`/channels/${channelId}/continue`, null, {
+          params: {
+            context: context,
+            extension: extension,
+            priority: priority
+          }
+        });
+
+        this.logger.log(`Canal ${channelId} devuelto exitosamente a ${context},${extension},${priority}`);
+        return response.data;
+      } else {
+        // Continuar en el dialplan desde donde se quedó
+        this.logger.log(`Continuando canal ${channelId} en el dialplan`);
+
+        const response = await this.client.post(`/channels/${channelId}/continue`);
+
+        this.logger.log(`Canal ${channelId} continuando en dialplan`);
+        return response.data;
+      }
     } catch (error) {
-      this.logger.error(`Error devolviendo canal: ${error.message}`);
+      this.logger.error(`Error devolviendo canal ${channelId}: ${error.message}`);
+      if (error.response) {
+        this.logger.error(`Respuesta del error: ${JSON.stringify(error.response.data)}`);
+      }
       throw error;
     }
   }
+
 
   /**
    * Mover archivo desde /var/spool/asterisk/recording/ a /tmp/asterisk/stt/
