@@ -24,11 +24,23 @@ export const Arbitrios = 'Arbitrios';
 export const Multatributaria = '';
 export const fortmatText = (plate: string): string => {
   if (!plate) return plate;
-  const normal = plate.replace(
-    /\b([A-Z0-9]+(?:[\s\.,\-]+[A-Z0-9]+)+)\b/gi,
-    (match) => match.replace(/[\s\.,\-]/g, ''),
-  );
-  return normal.toUpperCase();
+
+  console.log(`[DEBUG] fortmatText entrada: "${plate}"`);
+
+  // Remover cada tipo de caracter por separado para máxima claridad
+  let cleaned = plate.replace(/\s/g, '');
+  console.log(`[DEBUG] después de remover espacios: "${cleaned}"`);
+
+  cleaned = cleaned.replace(/\./g, '');
+  console.log(`[DEBUG] después de remover puntos: "${cleaned}"`);
+
+  cleaned = cleaned.replace(/,/g, '');
+  cleaned = cleaned.replace(/-/g, '');
+
+  const result = cleaned.toUpperCase();
+  console.log(`[DEBUG] fortmatText salida: "${result}"`);
+
+  return result;
 };
 export const joinText = (text: string): string => {
   if (!text) return text;
