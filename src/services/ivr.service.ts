@@ -47,8 +47,9 @@ export class IVRService {
 
     this.logger.log(`STT exitoso para placa: raw="${stt.element.raw_text}", plate="${stt.element.plate}"`);
 
-    const plate = fortmatText(stt.element.raw_text);
-    this.logger.log(`Placa antes de formatear: "${stt.element.raw_text}"`);
+    const rawPlaca = stt.element.raw_text;
+    const plate = fortmatText(rawPlaca);
+    this.logger.log(`Placa antes de formatear: "${rawPlaca}"`);
     this.logger.log(`Placa despues de formatear: "${plate}"`);
 
     const valid = await this.ResponseTTS(
@@ -56,7 +57,7 @@ export class IVRService {
     );
     promise.success = true;
     promise.audio = valid;
-    promise.placa = stt.element?.plate ?? '';
+    promise.placa = plate;
     return promise;
   }
 
@@ -117,18 +118,23 @@ export class IVRService {
 
     this.logger.log(`STT respuesta para papeleta: success=${stt.element?.success}, raw="${stt.element?.raw || 'N/A'}"`);
 
-    const papeleta = stt.element != null ? fortmatText(stt.element.raw) : '';
-    this.logger.log(`Papeleta antes de formatear: "${stt.element?.raw || 'N/A'}"`);
+    const rawPapeleta = stt.element?.raw || '';
+    this.logger.log(`Papeleta antes de formatear: "${rawPapeleta}"`);
+
+    // Debug explícito del formateo
+    const papeleta = fortmatText(rawPapeleta);
     this.logger.log(`Papeleta despues de formatear: "${papeleta}"`);
 
     const message = `Confirmar que la papeleta es ${joinText(papeleta)}... ${opcionConfirmar}`;
-    console.log('papeleta', papeleta);
+    console.log('papeleta formateada final:', papeleta);
+
     const audio = await this.ResponseTTS(message);
     promise.success = true;
     promise.audio = audio;
-    promise.placa = papeleta ?? '';
+    promise.placa = papeleta; //
     return promise;
   }
+
 
   async papeletaInfo(papeletaId: string): Promise<Buffer> {
     const papeletaFormateada = fortmatText(papeletaId);
