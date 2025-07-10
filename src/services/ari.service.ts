@@ -158,19 +158,12 @@ export class AriService {
 
   async exitStasisApp(channelId: string, context?: string, extension?: string, priority?: number): Promise<any> {
     try {
-      const serverId = this.getServerFromChannel(channelId);
-      const client = this.clients.get(serverId);
-
-      if (!client) {
-        throw new Error(`Cliente no encontrado para servidor: ${serverId}`);
-      }
-
       const params: any = {};
       if (context) params.context = context;
       if (extension) params.extension = extension;
       if (priority) params.priority = priority;
 
-      const response = await client.delete(`/channels/${channelId}`, { params });
+      const response = await this.client.delete(`/channels/${channelId}`, { params });
 
       const contextInfo = context ? ` a ${context},${extension || 's'},${priority || 1}` : '';
       this.logger.log(`Canal ${channelId} devuelto a Asterisk${contextInfo}`);
