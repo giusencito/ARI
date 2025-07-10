@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config/dist';
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import {
@@ -19,7 +19,9 @@ import { PlacaDto } from './dto/PlacaDto';
 
 @Injectable()
 export class SatProxy {
+  private readonly logger = new Logger(SatProxy.name);
   private client: AxiosInstance;
+
   constructor(private readonly configService: ConfigService) {
     this.client = axios.create({
       baseURL: this.configService.get<string>(SAT_URL) ?? '',
@@ -29,6 +31,7 @@ export class SatProxy {
       },
     });
   }
+
   async getToken(): Promise<ApiResponseProxyDTO<TokenDto>> {
     const body = {
       client_id: this.configService.get<string>(CLIENT_ID) ?? '',
@@ -56,6 +59,7 @@ export class SatProxy {
     promise.element = content;
     return promise;
   }
+
   async CaptureOrder(
     plateId: string,
   ): Promise<ApiResponseProxyDTO<BulletDto[]>> {
@@ -65,16 +69,19 @@ export class SatProxy {
         `Error con Token se tiene que la consulta genero un ${token.statusCode}`,
       );
     }
+
     const config: AxiosRequestConfig = {
       headers: {
         Authorization: `Bearer ${token.element?.access_token}`,
       },
       validateStatus: () => true,
     };
-    const response: AxiosResponse<BulletDto[]> = await this.client.get(
-      `/saldomatico/papeleta/${plateId}`,
-      config,
-    );
+
+    const url = `/saldomatico/papeleta/${plateId}`;
+    this.logger.log(`Consultando placa en SAT: "${plateId}"`);
+
+    const response: AxiosResponse<BulletDto[]> = await this.client.get(url, config);
+
     const promise = new ApiResponseProxyDTO<BulletDto[]>();
     if (response.status != 200) {
       promise.success = false;
@@ -82,12 +89,14 @@ export class SatProxy {
       promise.url = '';
       return promise;
     }
+
     const content = response.data;
     promise.success = true;
     promise.statusCode = response.status;
     promise.element = content;
     return promise;
   }
+
   async GetExpediente(
     psiCodMun: string,
     pcNumeroGenDoc: string,
@@ -116,6 +125,7 @@ export class SatProxy {
     promise.element = content;
     return promise;
   }
+
   async GetFalta(pcCodFal: string): Promise<ApiResponseProxyDTO<FaltaDto[]>> {
     const token = await this.getToken();
     const config: AxiosRequestConfig = {
@@ -141,9 +151,12 @@ export class SatProxy {
     promise.element = content;
     return promise;
   }
+
   async GetPapeletas(
     placaId: string,
   ): Promise<ApiResponseProxyDTO<PlacaDto[]>> {
+    this.logger.log(`Consultando papeletas: placa="${placaId}"`);
+
     const token = await this.getToken();
     const config: AxiosRequestConfig = {
       headers: {
@@ -152,26 +165,37 @@ export class SatProxy {
       },
       validateStatus: () => true,
     };
-    const response: AxiosResponse<PlacaDto[]> = await this.client.get(
-      `/saldomatico/saldomatico/3/${placaId}/0/10/11`,
-      config,
-    );
+
+    const url = `/saldomatico/saldomatico/3/${placaId}/0/10/11`;
+    this.logger.log(`Consultando placa en SAT: "${placaId}"`);
+
+    const response: AxiosResponse<PlacaDto[]> = await this.client.get(url, config);
+
+    this.logger.log(`Respuesta SAT papeletas: statusCode=${response.status}, placa="${placaId}"`);
+
     const promise = new ApiResponseProxyDTO<PlacaDto[]>();
     if (response.status != 200) {
+      this.logger.error(`Error consultando papeletas: statusCode=${response.status}, placa="${placaId}"`);
       promise.success = false;
       promise.statusCode = response.status;
       promise.url = '';
       return promise;
     }
+
     const content = response.data;
+    this.logger.log(`Papeletas encontradas: ${content?.length || 0} para placa="${placaId}"`);
+
     promise.success = true;
     promise.statusCode = response.status;
     promise.element = content;
     return promise;
   }
+
   async GetPapeleta(
     papeletaId: string,
   ): Promise<ApiResponseProxyDTO<PlacaDto>> {
+    this.logger.log(`Consultando papeleta individual: papeleta="${papeletaId}"`);
+
     const token = await this.getToken();
     const config: AxiosRequestConfig = {
       headers: {
@@ -180,24 +204,42 @@ export class SatProxy {
       },
       validateStatus: () => true,
     };
-    const response: AxiosResponse<PlacaDto[]> = await this.client.get(
-      `/saldomatico/saldomatico/4/${papeletaId}/0/10/11`,
-      config,
-    );
+
+    const url = `/saldomatico/saldomatico/4/${papeletaId}/0/10/11`;
+    this.logger.log(`Consultando papeleta en SAT: "${papeletaId}"`);
+
+    const response: AxiosResponse<PlacaDto[]> = await this.client.get(url, config);
+
+    this.logger.log(`Respuesta SAT papeleta individual: statusCode=${response.status}, papeleta="${papeletaId}"`);
+
     const promise = new ApiResponseProxyDTO<PlacaDto>();
     if (response.status != 200) {
+      this.logger.error(`Error consultando papeleta individual: statusCode=${response.status}, papeleta="${papeletaId}"`);
       promise.success = false;
       promise.statusCode = response.status;
       promise.url = '';
       return promise;
     }
+
     let content = response.data;
+    this.logger.log(`Papeletas recibidas antes de filtrar: ${content?.length || 0}`);
+
     content = content.filter((item) => item.documento.trim() == papeletaId);
+    this.logger.log(`Papeletas despues de filtrar por documento="${papeletaId}": ${content?.length || 0}`);
+
     promise.success = true;
     promise.statusCode = response.status;
     promise.element = content.length == 0 ? undefined : content[0];
+
+    if (content.length > 0) {
+      this.logger.log(`Papeleta encontrada: documento="${content[0].documento}", monto=${content[0].monto}`);
+    } else {
+      this.logger.log(`No se encontro papeleta con documento="${papeletaId}"`);
+    }
+
     return promise;
   }
+
   async GetDeudaTributaria(code: string, type: string) {
     const token = await this.getToken();
     const config: AxiosRequestConfig = {
