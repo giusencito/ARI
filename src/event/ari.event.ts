@@ -432,7 +432,9 @@ export class AriEvent implements OnModuleInit {
 
       // Timeout configurable para que se reproduzca completamente
       const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 10000;
-      setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
+      setTimeout(() => {
+        this.returnToIVRContext(channelId, 'retornoivr3');
+      }, playbackTimeout);
 
     } catch (error) {
       this.logger.error(`Error en consulta confirmada: ${error.message}`);
@@ -463,6 +465,23 @@ export class AriEvent implements OnModuleInit {
     } catch (error) {
       this.logger.error(`Error devolviendo a Asterisk: ${error.message}`);
       this.activeChannels.delete(channelId);
+    }
+  }
+
+  /**
+   * Devolver llamada a contexto específico del IVR
+   */
+  private async returnToIVRContext(channelId: string, context: string, extension: string = 's', priority: number = 1) {
+    try {
+      this.logger.log(`Devolviendo canal ${channelId} a contexto IVR: ${context}`);
+
+      await this.ariService.exitStasisApp(channelId, context, extension, priority);
+      this.activeChannels.delete(channelId);
+
+    } catch (error) {
+      this.logger.error(`Error devolviendo a contexto IVR: ${error.message}`);
+      // Fallback al método original
+      await this.returnToAsterisk(channelId);
     }
   }
 

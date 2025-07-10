@@ -156,19 +156,29 @@ export class AriService {
     return response.data;
   }
 
-  async exitStasisApp(channelId: string): Promise<any> {
+  async exitStasisApp(channelId: string, context?: string, extension?: string, priority?: number): Promise<any> {
     try {
-      this.logger.log(`Devolviendo canal ${channelId} a Asterisk dialplan`);
+      const serverId = this.getServerFromChannel(channelId);
+      const client = this.clients.get(serverId);
 
-      const response = await this.client.post(`/channels/${channelId}/continue`);
+      if (!client) {
+        throw new Error(`Cliente no encontrado para servidor: ${serverId}`);
+      }
 
-      this.logger.log(`Canal ${channelId} devuelto exitosamente`);
+      const params: any = {};
+      if (context) params.context = context;
+      if (extension) params.extension = extension;
+      if (priority) params.priority = priority;
+
+      const response = await client.delete(`/channels/${channelId}`, { params });
+
+      const contextInfo = context ? ` a ${context},${extension || 's'},${priority || 1}` : '';
+      this.logger.log(`Canal ${channelId} devuelto a Asterisk${contextInfo}`);
       return response.data;
+
     } catch (error) {
-      this.logger.error(`Error saliendo de Stasis: ${error.message}`);
-      throw new InternalServerErrorException(
-        `Exit Stasis Error: ${error.message}`
-      );
+      this.logger.error(`Error devolviendo canal: ${error.message}`);
+      throw error;
     }
   }
 
