@@ -158,18 +158,9 @@ export class AriService {
 
   async exitStasisApp(channelId: string, context?: string, extension?: string, priority?: number): Promise<any> {
     try {
-      const params: any = {};
-      if (context) params.context = context;
-      if (extension) params.extension = extension;
-      if (priority) params.priority = priority;
+      const response = await this.client.delete(`/channels/${channelId}`);
 
-      this.logger.log(`Parámetros ARI: ${JSON.stringify(params)}`);
-      this.logger.log(`URL completa: DELETE /channels/${channelId} con params: ${JSON.stringify(params)}`);
-
-      const response = await this.client.delete(`/channels/${channelId}`, { params });
-
-      const contextInfo = context ? ` a ${context},${extension || 's'},${priority || 1}` : '';
-      this.logger.log(`Canal ${channelId} devuelto a Asterisk${contextInfo}`);
+      this.logger.log(`Canal ${channelId} devuelto a Asterisk (método original)`);
       return response.data;
 
     } catch (error) {
