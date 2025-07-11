@@ -448,16 +448,26 @@ export class AriEvent implements OnModuleInit {
       const playbackResult = await this.ariService.playAudioBuffer(channelId, resultAudio);
       this.logger.log(`Resultado reproducido para canal ${channelId}`);
 
-      // Usar duración calculada + margen de seguridad configurable
+      // DEBUG EXTREMO: Verificar cada variable por separado
       const audioDurationMs = playbackResult.estimatedDurationMs;
-      const safetyMarginMs = this.configService.get<number>('IVR_AUDIO_SAFETY_MARGIN') ?? 3000;
-      const totalWaitTime = audioDurationMs + safetyMarginMs;
+      this.logger.log(`DEBUG 1 - audioDurationMs type: ${typeof audioDurationMs}, value: ${audioDurationMs}`);
 
-      // DEBUG: Log detallado para verificar cálculo
-      this.logger.log(`DEBUG - Audio duration: ${audioDurationMs}ms`);
-      this.logger.log(`DEBUG - Safety margin: ${safetyMarginMs}ms`);
-      this.logger.log(`DEBUG - Total wait: ${totalWaitTime}ms`);
-      this.logger.log(`DEBUG - Total wait in seconds: ${(totalWaitTime / 1000).toFixed(2)}s`);
+      const safetyMarginConfig = this.configService.get<number>('IVR_AUDIO_SAFETY_MARGIN');
+      this.logger.log(`DEBUG 2 - safetyMarginConfig type: ${typeof safetyMarginConfig}, value: ${safetyMarginConfig}`);
+
+      const safetyMarginMs = safetyMarginConfig ?? 3000;
+      this.logger.log(`DEBUG 3 - safetyMarginMs type: ${typeof safetyMarginMs}, value: ${safetyMarginMs}`);
+
+      // Forzar conversión a número para estar seguros
+      const audioDurationNumber = Number(audioDurationMs);
+      const safetyMarginNumber = Number(safetyMarginMs);
+
+      this.logger.log(`DEBUG 4 - audioDurationNumber: ${audioDurationNumber}`);
+      this.logger.log(`DEBUG 5 - safetyMarginNumber: ${safetyMarginNumber}`);
+
+      const totalWaitTime = audioDurationNumber + safetyMarginNumber;
+
+      this.logger.log(`DEBUG 6 - Calculation: ${audioDurationNumber} + ${safetyMarginNumber} = ${totalWaitTime}`);
 
       // Validación de seguridad: máximo 30 segundos
       const maxWaitTime = 30000; // 30 segundos máximo
@@ -467,7 +477,7 @@ export class AriEvent implements OnModuleInit {
         this.logger.warn(`Tiempo de espera reducido de ${totalWaitTime}ms a ${finalWaitTime}ms por seguridad`);
       }
 
-      this.logger.log(`Esperando ${finalWaitTime}ms (audio: ${audioDurationMs}ms + margen: ${safetyMarginMs}ms)`);
+      this.logger.log(`FINAL - Esperando ${finalWaitTime}ms (audio: ${audioDurationNumber}ms + margen: ${safetyMarginNumber}ms)`);
 
       setTimeout(() => {
         // Devolver al contexto retornoivr para que maneje el menú post-consulta
