@@ -44,6 +44,8 @@ export const fortmatText = (plate: string): string => {
 };
 export const joinText = (text: string): string => {
   if (!text) return text;
-  const cambio = text.replace(/(.)/g, '$1 ').trim();
-  return cambio;
+
+  // Separar cada caracter con comas para pausas más largas en TTS
+  const caracteres = text.split('');
+  return caracteres.join(', ');
 };
