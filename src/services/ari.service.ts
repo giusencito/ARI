@@ -485,29 +485,34 @@ export class AriService {
 
       const finalPlaybackId = playbackId || `predefined-${Date.now()}`;
 
+      // Remover extensión .wav si existe, ya que Asterisk la agrega automáticamente
+      const cleanAudioName = audioName.replace(/\.wav$/, '');
+
       const response = await this.client.post(
         `/channels/${channelId}/play/${finalPlaybackId}`,
         null,
         {
           params: {
-            media: `sound:/opt/voces-sat/cc/${audioName}`
+            media: `sound:/opt/voces-sat/cc/${cleanAudioName}`
           }
         }
       );
 
-      this.logger.log(`Audio predefinido iniciado: ${audioName} en canal ${channelId}`);
+      this.logger.log(`Audio predefinido iniciado: ${cleanAudioName} en canal ${channelId}`);
 
       // Duración estimada para cada audio predefinido
       const audioDurations = {
         'tts_reintento_placa': 4000,        // ~4 segundos
         'tts_reintento_papeleta': 4500,     // ~4.5 segundos
-        'tts_error_placa': 3500,            // ~3.5 segundos - NUEVO
-        'tts_error_papeleta': 3500,         // ~3.5 segundos - NUEVO
+        'tts_error_placa': 3500,            // ~3.5 segundos
+        'tts_error_papeleta': 3500,         // ~3.5 segundos
         'tts_maximo_intentos': 6000,        // ~6 segundos
       };
-      const estimatedDurationMs = audioDurations[audioName] || 4000;
 
-      this.logger.log(`Duración estimada para ${audioName}: ${estimatedDurationMs}ms`);
+      // Usar el nombre limpio (sin .wav) para buscar la duración
+      const estimatedDurationMs = audioDurations[cleanAudioName] || 4000;
+
+      this.logger.log(`Duración estimada para ${cleanAudioName}: ${estimatedDurationMs}ms`);
 
       return {
         playbackData: response.data,

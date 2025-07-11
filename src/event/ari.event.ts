@@ -254,7 +254,7 @@ export class AriEvent implements OnModuleInit {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
           // Audio predefinido: "La placa no fue detectada, intente de nuevo"
-          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_placa');
+          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_placa.wav');
 
           await new Promise(resolve => setTimeout(resolve, errorResult.estimatedDurationMs + 500));
           await this.restartRecording(channelId, session);
@@ -315,7 +315,7 @@ export class AriEvent implements OnModuleInit {
         if (session.retryCount <= 3) {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
-          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_papeleta');
+          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_papeleta.wav');
 
           await new Promise(resolve => setTimeout(resolve, errorResult.estimatedDurationMs + 500));
           await this.restartRecording(channelId, session);
@@ -381,10 +381,9 @@ export class AriEvent implements OnModuleInit {
     try {
       this.logger.log(`Reiniciando grabación para ${session.consultType} en canal ${channelId}`);
 
-      // NOMBRES CORREGIDOS
       const audioName = session.consultType === 'placa'
-        ? 'tts_reintento_placa'
-        : 'tts_reintento_papeleta';
+        ? 'tts_reintento_placa.wav'
+        : 'tts_reintento_papeleta.wav';
 
       const playbackResult = await this.ariService.playPredefinedAudio(channelId, audioName);
 
