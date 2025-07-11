@@ -481,6 +481,8 @@ export class AriService {
    */
   async playPredefinedAudio(channelId: string, audioName: string, playbackId?: string): Promise<{ playbackData: any, estimatedDurationMs: number }> {
     try {
+      this.logger.log(`DEBUG: Intentando reproducir audio predefinido: ${audioName}`);
+
       const finalPlaybackId = playbackId || `predefined-${Date.now()}`;
 
       const response = await this.client.post(
