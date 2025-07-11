@@ -292,18 +292,70 @@ export class AriService {
   }
 
   /**
-   * Reproducir audio TTS subiendo a /tmp/asterisk/tts/
-   * (Los archivos TTS en /tmp se limpian automáticamente por el OS)
+   * Calcular duración estimada considerando conversión de Piper (22.050 KHz) a 8 KHz
    */
-  async playAudioBuffer(channelId: string, audioBuffer: Buffer, playbackId?: string): Promise<any> {
+  private calculateAudioDurationFromPiper(originalAudioBuffer: Buffer): number {
     try {
-      // 1. Generar nombre único para el archivo TTS
+      // Valores por defecto para Piper TTS
+      let originalSampleRate = 22050; // Piper (Claude) genera a 22.050 KHz
+      let originalChannels = 1;
+      let originalBitsPerSample = 16;
+
+      // Intentar detectar formato del audio original si tiene header WAV
+      if (originalAudioBuffer.length >= 44 && originalAudioBuffer.toString('ascii', 0, 4) === 'RIFF') {
+        try {
+          originalSampleRate = originalAudioBuffer.readUInt32LE(24);
+          originalChannels = originalAudioBuffer.readUInt16LE(22);
+          originalBitsPerSample = originalAudioBuffer.readUInt16LE(34);
+          this.logger.log(`Formato original detectado: ${originalSampleRate}Hz, ${originalChannels}ch, ${originalBitsPerSample}bit`);
+        } catch (e) {
+          this.logger.warn('No se pudo leer header WAV, usando valores Piper por defecto');
+        }
+      } else {
+        this.logger.log(`Sin header WAV detectado, usando formato Piper: ${originalSampleRate}Hz`);
+      }
+
+      // Calcular duración del audio original
+      const originalBytesPerSample = originalBitsPerSample / 8;
+      const headerSize = originalAudioBuffer.toString('ascii', 0, 4) === 'RIFF' ? 44 : 0;
+      const originalDataSize = originalAudioBuffer.length - headerSize;
+      const originalTotalSamples = originalDataSize / (originalBytesPerSample * originalChannels);
+      const durationSeconds = originalTotalSamples / originalSampleRate;
+
+      // La duración NO cambia al convertir frecuencia
+      const durationMs = Math.ceil(durationSeconds * 1000);
+
+      this.logger.log(`Duración calculada: ${durationMs}ms (${durationSeconds.toFixed(2)}s)`);
+      this.logger.log(`Original: ${originalSampleRate}Hz → Convertido: 8000Hz (misma duración)`);
+
+      return durationMs;
+
+    } catch (error) {
+      this.logger.error(`Error calculando duración: ${error.message}`);
+
+      // Fallback: estimar basado en tamaño típico de Piper
+      const estimatedSeconds = originalAudioBuffer.length / 44100; // ~44KB por segundo
+      const estimatedMs = Math.ceil(estimatedSeconds * 1000);
+      this.logger.warn(`Usando estimación fallback Piper: ${estimatedMs}ms`);
+      return estimatedMs;
+    }
+  }
+
+  /**
+   * Reproducir audio TTS subiendo a /tmp/asterisk/tts/ y retornar duración estimada
+   */
+  async playAudioBuffer(channelId: string, audioBuffer: Buffer, playbackId?: string): Promise<{ playbackData: any, estimatedDurationMs: number }> {
+    try {
+      // 1. Calcular duración estimada del audio original (antes de conversión)
+      const estimatedDurationMs = this.calculateAudioDurationFromPiper(audioBuffer);
+
+      // 2. Generar nombre único para el archivo TTS
       const filename = `tts_${channelId}_${Date.now()}.wav`;
 
-      // 2. Subir archivo TTS al servidor Asterisk en /tmp/asterisk/tts/
+      // 3. Subir archivo TTS al servidor Asterisk en /tmp/asterisk/tts/
       await this.uploadTTSToAsterisk(audioBuffer, filename);
 
-      // 3. Reproducir desde /tmp/asterisk/tts/ usando ruta absoluta
+      // 4. Reproducir desde /tmp/asterisk/tts/ usando ruta absoluta
       const finalPlaybackId = playbackId || `tts-${Date.now()}`;
 
       const response = await this.client.post(
@@ -319,9 +371,13 @@ export class AriService {
 
       this.logger.log(`Audio TTS iniciado en canal ${channelId} con ID: ${finalPlaybackId}`);
       this.logger.log(`Reproduciendo archivo: /tmp/asterisk/tts/${filename}`);
+      this.logger.log(`Duración estimada: ${estimatedDurationMs}ms`);
       this.logger.log(`Nota: Archivo TTS se limpiará automáticamente del sistema en /tmp`);
 
-      return response.data;
+      return {
+        playbackData: response.data,
+        estimatedDurationMs: estimatedDurationMs
+      };
 
     } catch (error) {
       this.logger.error(`Error reproduciendo audio TTS: ${error.message}`);
