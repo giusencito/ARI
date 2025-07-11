@@ -449,15 +449,30 @@ export class AriEvent implements OnModuleInit {
       this.logger.log(`Resultado reproducido para canal ${channelId}`);
 
       // Usar duración calculada + margen de seguridad configurable
+      const audioDurationMs = playbackResult.estimatedDurationMs;
       const safetyMarginMs = this.configService.get<number>('IVR_AUDIO_SAFETY_MARGIN') ?? 3000;
-      const totalWaitTime = playbackResult.estimatedDurationMs + safetyMarginMs;
+      const totalWaitTime = audioDurationMs + safetyMarginMs;
 
-      this.logger.log(`Esperando ${totalWaitTime}ms (audio: ${playbackResult.estimatedDurationMs}ms + margen: ${safetyMarginMs}ms)`);
+      // DEBUG: Log detallado para verificar cálculo
+      this.logger.log(`DEBUG - Audio duration: ${audioDurationMs}ms`);
+      this.logger.log(`DEBUG - Safety margin: ${safetyMarginMs}ms`);
+      this.logger.log(`DEBUG - Total wait: ${totalWaitTime}ms`);
+      this.logger.log(`DEBUG - Total wait in seconds: ${(totalWaitTime / 1000).toFixed(2)}s`);
+
+      // Validación de seguridad: máximo 30 segundos
+      const maxWaitTime = 30000; // 30 segundos máximo
+      const finalWaitTime = Math.min(totalWaitTime, maxWaitTime);
+
+      if (totalWaitTime !== finalWaitTime) {
+        this.logger.warn(`Tiempo de espera reducido de ${totalWaitTime}ms a ${finalWaitTime}ms por seguridad`);
+      }
+
+      this.logger.log(`Esperando ${finalWaitTime}ms (audio: ${audioDurationMs}ms + margen: ${safetyMarginMs}ms)`);
 
       setTimeout(() => {
         // Devolver al contexto retornoivr para que maneje el menú post-consulta
         this.returnToIVRContext(channelId, 'retornoivr', 's', 1);
-      }, totalWaitTime);
+      }, finalWaitTime);
 
     } catch (error) {
       this.logger.error(`Error en consulta confirmada: ${error.message}`);
