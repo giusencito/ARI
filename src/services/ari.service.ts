@@ -479,7 +479,7 @@ export class AriService {
   /**
    * Reproducir audio predefinido desde /opt/voces-sat/cc/
    */
-  sync playPredefinedAudio(channelId: string, audioName: string, playbackId?: string): Promise<{ playbackData: any, estimatedDurationMs: number }> {
+  async playPredefinedAudio(channelId: string, audioName: string, playbackId?: string): Promise<{ playbackData: any, estimatedDurationMs: number }> {
     try {
       const finalPlaybackId = playbackId || `predefined-${Date.now()}`;
 

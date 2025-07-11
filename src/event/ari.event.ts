@@ -254,13 +254,13 @@ export class AriEvent implements OnModuleInit {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
           // Audio predefinido: "La placa no fue detectada, intente de nuevo"
-          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_papeleta');
+          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_placa');
 
           await new Promise(resolve => setTimeout(resolve, errorResult.estimatedDurationMs + 500));
           await this.restartRecording(channelId, session);
         } else {
           // Audio predefinido: "Se ha alcanzado el máximo de intentos..."
-          const maxAttemptsResult = await this.ariService.playPredefinedAudio(channelId, 'stt_maximo_intentos');
+          const maxAttemptsResult = await this.ariService.playPredefinedAudio(channelId, 'tts_maximo_intentos');
 
           // Calcular tiempo de espera con validación
           const audioDurationMs = Number(maxAttemptsResult.estimatedDurationMs);
@@ -315,15 +315,15 @@ export class AriEvent implements OnModuleInit {
         if (session.retryCount <= 3) {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
-          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_no_detectado');
+          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_papeleta');
 
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, errorResult.estimatedDurationMs + 500));
           await this.restartRecording(channelId, session);
         } else {
           const maxAttemptsResult = await this.ariService.playPredefinedAudio(channelId, 'tts_maximo_intentos');
 
           // Calcular tiempo de espera con validación
-          const audioDurationMs = Number(playbackResult?.estimatedDurationMs || 5000);
+          const audioDurationMs = Number(maxAttemptsResult.estimatedDurationMs);
           const safetyMarginMs = Number(this.configService.get<number>(IVR_AUDIO_SAFETY_MARGIN) ?? 3000);
           const totalWaitTime = audioDurationMs + safetyMarginMs;
 
