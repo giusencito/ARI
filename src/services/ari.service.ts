@@ -475,4 +475,48 @@ export class AriService {
       return null;
     }
   }
+
+  /**
+   * Reproducir audio predefinido desde /opt/voces-sat/cc/
+   */
+  sync playPredefinedAudio(channelId: string, audioName: string, playbackId?: string): Promise<{ playbackData: any, estimatedDurationMs: number }> {
+    try {
+      const finalPlaybackId = playbackId || `predefined-${Date.now()}`;
+
+      const response = await this.client.post(
+        `/channels/${channelId}/play/${finalPlaybackId}`,
+        null,
+        {
+          params: {
+            media: `sound:/opt/voces-sat/cc/${audioName}`
+          }
+        }
+      );
+
+      this.logger.log(`Audio predefinido iniciado: ${audioName} en canal ${channelId}`);
+
+      // Duración estimada para cada audio predefinido
+      const audioDurations = {
+        'tts_reintento_placa': 4000,        // ~4 segundos
+        'tts_reintento_papeleta': 4500,     // ~4.5 segundos
+        'tts_error_placa': 3500,            // ~3.5 segundos - NUEVO
+        'tts_error_papeleta': 3500,         // ~3.5 segundos - NUEVO
+        'tts_maximo_intentos': 6000,        // ~6 segundos
+      };
+      const estimatedDurationMs = audioDurations[audioName] || 4000;
+
+      this.logger.log(`Duración estimada para ${audioName}: ${estimatedDurationMs}ms`);
+
+      return {
+        playbackData: response.data,
+        estimatedDurationMs: estimatedDurationMs
+      };
+
+    } catch (error) {
+      this.logger.error(`Error reproduciendo audio predefinido: ${error.message}`);
+      throw new InternalServerErrorException(`Play Predefined Audio Error: ${error.message}`);
+    }
+  }
+
+
 }

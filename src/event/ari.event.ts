@@ -244,36 +244,34 @@ export class AriEvent implements OnModuleInit {
         const result = await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
 
       } else {
-        // STT falló - ofrecer reintento
-        this.logger.log(`No se pudo extraer placa, ofreciendo reintento`);
-
-        // Incrementar contador de reintentos
+        // Lógica de reintento similar a processPlacaRecording
         if (!session.retryCount) {
           session.retryCount = 0;
         }
         session.retryCount++;
 
-        // Máximo 3 intentos
         if (session.retryCount <= 3) {
-          this.logger.log(`Intento ${session.retryCount} de 3`);
+          this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
-          const result = await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+          // Audio predefinido: "La placa no fue detectada, intente de nuevo"
+          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_papeleta');
 
-          // Esperar y reiniciar grabación
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, errorResult.estimatedDurationMs + 500));
           await this.restartRecording(channelId, session);
         } else {
-          // Máximo de intentos alcanzado
-          this.logger.log(`Máximo de intentos alcanzado para canal ${channelId}`);
+          // Audio predefinido: "Se ha alcanzado el máximo de intentos..."
+          const maxAttemptsResult = await this.ariService.playPredefinedAudio(channelId, 'stt_maximo_intentos');
 
-          const maxAttemptsMessage = 'Se ha alcanzado el máximo de intentos. La llamada será transferida a un operador';
-          const maxAttemptsAudio = await this.ivrService.ResponseTTS(maxAttemptsMessage);
+          // Calcular tiempo de espera con validación
+          const audioDurationMs = Number(maxAttemptsResult.estimatedDurationMs);
+          const safetyMarginMs = Number(this.configService.get<number>('IVR_AUDIO_SAFETY_MARGIN') ?? 3000);
+          const totalWaitTime = audioDurationMs + safetyMarginMs;
 
-          const result = await this.ariService.playAudioBuffer(channelId, maxAttemptsAudio);
+          this.logger.log(`Esperando ${totalWaitTime}ms antes de devolver a retornoivr`);
 
-          // Esperar y finalizar
-          const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 5000;
-          setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
+          setTimeout(() => {
+            this.returnToIVRContext(channelId, 'retornoivr', 's', 1);
+          }, totalWaitTime);
         }
       }
 
@@ -317,18 +315,23 @@ export class AriEvent implements OnModuleInit {
         if (session.retryCount <= 3) {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
-          const result = await this.ariService.playAudioBuffer(channelId, confirmacion.audio);
+          const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_no_detectado');
 
           await new Promise(resolve => setTimeout(resolve, 2000));
           await this.restartRecording(channelId, session);
         } else {
-          const maxAttemptsMessage = 'Se ha alcanzado el máximo de intentos. La llamada será transferida a un operador';
-          const maxAttemptsAudio = await this.ivrService.ResponseTTS(maxAttemptsMessage);
+          const maxAttemptsResult = await this.ariService.playPredefinedAudio(channelId, 'tts_maximo_intentos');
 
-          const result = await this.ariService.playAudioBuffer(channelId, maxAttemptsAudio);
+          // Calcular tiempo de espera con validación
+          const audioDurationMs = Number(playbackResult?.estimatedDurationMs || 5000);
+          const safetyMarginMs = Number(this.configService.get<number>(IVR_AUDIO_SAFETY_MARGIN) ?? 3000);
+          const totalWaitTime = audioDurationMs + safetyMarginMs;
 
-          const playbackTimeout = this.configService.get<number>(IVR_PLAYBACK_TIMEOUT) ?? 5000;
-          setTimeout(() => this.returnToAsterisk(channelId), playbackTimeout);
+          this.logger.log(`Esperando ${totalWaitTime}ms antes de devolver a retornoivr`);
+
+          setTimeout(() => {
+            this.returnToIVRContext(channelId, 'retornoivr', 's', 1);
+          }, totalWaitTime);
         }
       }
 
@@ -378,17 +381,15 @@ export class AriEvent implements OnModuleInit {
     try {
       this.logger.log(`Reiniciando grabación para ${session.consultType} en canal ${channelId}`);
 
-      // Reproducir mensaje de reintento
-      const retryMessage = session.consultType === 'placa'
-        ? 'Por favor, diga nuevamente su placa vehicular'
-        : 'Por favor, diga nuevamente su número de papeleta';
+      // NOMBRES CORREGIDOS
+      const audioName = session.consultType === 'placa'
+        ? 'tts_reintento_placa'
+        : 'tts_reintento_papeleta';
 
-      const retryAudio = await this.ivrService.ResponseTTS(retryMessage);
+      const playbackResult = await this.ariService.playPredefinedAudio(channelId, audioName);
 
-      const result = await this.ariService.playAudioBuffer(channelId, retryAudio);
-
-      // Esperar un momento para que se reproduzca
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Esperar que termine de reproducirse + margen pequeño
+      await new Promise(resolve => setTimeout(resolve, playbackResult.estimatedDurationMs + 500));
 
       // Generar nuevo nombre de grabación
       const newRecordingName = `${session.consultType}_${channelId}_${Date.now()}_retry`;
