@@ -444,40 +444,24 @@ export class AriEvent implements OnModuleInit {
         throw new Error(`Tipo de consulta desconocido: ${session.consultType}`);
       }
 
-      // Reproducir resultado - ahora playAudioBuffer retorna duración calculada
+      // Reproducir resultado - playAudioBuffer retorna duración calculada
       const playbackResult = await this.ariService.playAudioBuffer(channelId, resultAudio);
       this.logger.log(`Resultado reproducido para canal ${channelId}`);
 
-      // DEBUG EXTREMO: Verificar cada variable por separado
-      const audioDurationMs = playbackResult.estimatedDurationMs;
-      this.logger.log(`DEBUG 1 - audioDurationMs type: ${typeof audioDurationMs}, value: ${audioDurationMs}`);
-
-      const safetyMarginConfig = this.configService.get<number>('IVR_AUDIO_SAFETY_MARGIN');
-      this.logger.log(`DEBUG 2 - safetyMarginConfig type: ${typeof safetyMarginConfig}, value: ${safetyMarginConfig}`);
-
-      const safetyMarginMs = safetyMarginConfig ?? 3000;
-      this.logger.log(`DEBUG 3 - safetyMarginMs type: ${typeof safetyMarginMs}, value: ${safetyMarginMs}`);
-
-      // Forzar conversión a número para estar seguros
-      const audioDurationNumber = Number(audioDurationMs);
-      const safetyMarginNumber = Number(safetyMarginMs);
-
-      this.logger.log(`DEBUG 4 - audioDurationNumber: ${audioDurationNumber}`);
-      this.logger.log(`DEBUG 5 - safetyMarginNumber: ${safetyMarginNumber}`);
-
-      const totalWaitTime = audioDurationNumber + safetyMarginNumber;
-
-      this.logger.log(`DEBUG 6 - Calculation: ${audioDurationNumber} + ${safetyMarginNumber} = ${totalWaitTime}`);
+      // Calcular tiempo de espera basado en duración real del audio + margen de seguridad
+      const audioDurationMs = Number(playbackResult.estimatedDurationMs);
+      const safetyMarginMs = Number(this.configService.get<number>('IVR_AUDIO_SAFETY_MARGIN') ?? 3000);
+      const totalWaitTime = audioDurationMs + safetyMarginMs;
 
       // Validación de seguridad: máximo 30 segundos
-      const maxWaitTime = 30000; // 30 segundos máximo
+      const maxWaitTime = 30000;
       const finalWaitTime = Math.min(totalWaitTime, maxWaitTime);
 
       if (totalWaitTime !== finalWaitTime) {
         this.logger.warn(`Tiempo de espera reducido de ${totalWaitTime}ms a ${finalWaitTime}ms por seguridad`);
       }
 
-      this.logger.log(`FINAL - Esperando ${finalWaitTime}ms (audio: ${audioDurationNumber}ms + margen: ${safetyMarginNumber}ms)`);
+      this.logger.log(`Esperando ${finalWaitTime}ms (audio: ${audioDurationMs}ms + margen: ${safetyMarginMs}ms)`);
 
       setTimeout(() => {
         // Devolver al contexto retornoivr para que maneje el menú post-consulta
