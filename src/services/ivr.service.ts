@@ -36,11 +36,9 @@ export class IVRService {
     const promise = new ConfirmacionDto();
     if (!stt.element?.success) {
       this.logger.log(`STT fallo para placa: raw="${stt.element?.raw_text || 'N/A'}", plate="${stt.element?.plate || 'N/A'}"`);
-      const invalid = await this.ResponseTTS(
-        'La placa no fue detectada intente de nuevo',
-      );
+
       promise.success = false;
-      promise.audio = invalid;
+      promise.audio = Buffer.alloc(0); // Buffer vacío
       promise.placa = stt.element != null ? stt.element.plate : '';
       return promise;
     }
@@ -118,6 +116,16 @@ export class IVRService {
 
     this.logger.log(`STT respuesta para papeleta: success=${stt.element?.success}, raw="${stt.element?.raw || 'N/A'}"`);
 
+    // Verificar si STT falló
+    if (!stt.element?.success) {
+      this.logger.log(`STT fallo para papeleta: raw="${stt.element?.raw || 'N/A'}"`);
+
+      promise.success = false;
+      promise.audio = Buffer.alloc(0); // Buffer vacío
+      promise.placa = '';
+      return promise;
+    }
+
     const rawPapeleta = stt.element?.raw || '';
     this.logger.log(`Papeleta antes de formatear: "${rawPapeleta}"`);
 
@@ -131,7 +139,7 @@ export class IVRService {
     const audio = await this.ResponseTTS(message);
     promise.success = true;
     promise.audio = audio;
-    promise.placa = papeleta; //
+    promise.placa = papeleta;
     return promise;
   }
 
