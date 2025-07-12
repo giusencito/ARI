@@ -250,7 +250,7 @@ export class AriEvent implements OnModuleInit {
         }
         session.retryCount++;
 
-        if (session.retryCount <= 3) {
+        if (session.retryCount < 3) {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
           // Audio predefinido: "La placa no fue detectada, intente de nuevo"
@@ -312,7 +312,7 @@ export class AriEvent implements OnModuleInit {
         }
         session.retryCount++;
 
-        if (session.retryCount <= 3) {
+        if (session.retryCount < 3) {
           this.logger.log(`Intento ${session.retryCount} de 3 para papeleta`);
 
           const errorResult = await this.ariService.playPredefinedAudio(channelId, 'tts_error_papeleta.wav');
