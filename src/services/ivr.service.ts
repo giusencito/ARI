@@ -38,7 +38,7 @@ export class IVRService {
       this.logger.log(`STT fallo para placa: raw="${stt.element?.raw_text || 'N/A'}", plate="${stt.element?.plate || 'N/A'}"`);
 
       promise.success = false;
-      promise.audio = Buffer.alloc(0); // Buffer vacío
+      promise.audio = Buffer.alloc(0);
       promise.placa = stt.element != null ? stt.element.plate : '';
       return promise;
     }
@@ -50,14 +50,16 @@ export class IVRService {
     this.logger.log(`Placa antes de formatear: "${rawPlaca}"`);
     this.logger.log(`Placa despues de formatear: "${plate}"`);
 
+    // Confirmación con comas para pausas
     const valid = await this.ResponseTTS(
-      `Confirmar que La placa es ${joinText(plate)}... ${opcionConfirmar}`,
+      `Confirmar que la placa es, ${joinText(plate)}. ${opcionConfirmar}`,
     );
     promise.success = true;
     promise.audio = valid;
     promise.placa = plate;
     return promise;
   }
+
 
   async placaInfo(placaId: string): Promise<Buffer> {
     const placaFormateada = fortmatText(placaId);
@@ -68,11 +70,16 @@ export class IVRService {
       );
 
     const bulletsArray = bullets.element ?? [];
-    let message = `la placa ${joinText(placaFormateada)} cuenta con ${bulletsArray.length} papeletas`;
+
+    // Usar comas para crear pausas naturales
+    let message = `La placa ${joinText(placaFormateada)}, cuenta con ${bulletsArray.length} papeletas`;
+
     if (bulletsArray.length > 0) {
       const sum = bulletsArray.reduce((acc, element) => acc + element.monto, 0);
       const roundedSum = Math.round(sum * 100) / 100;
-      message += ` con un monto de ${roundedSum} soles`;
+
+      // Agregar comas estratégicas para pausas
+      message += `, con un monto total de, ${roundedSum} soles`;
     }
 
     const response = await this.ResponseTTS(message);
@@ -116,12 +123,11 @@ export class IVRService {
 
     this.logger.log(`STT respuesta para papeleta: success=${stt.element?.success}, raw="${stt.element?.raw || 'N/A'}"`);
 
-    // Verificar si STT falló
     if (!stt.element?.success) {
       this.logger.log(`STT fallo para papeleta: raw="${stt.element?.raw || 'N/A'}"`);
 
       promise.success = false;
-      promise.audio = Buffer.alloc(0); // Buffer vacío
+      promise.audio = Buffer.alloc(0);
       promise.placa = '';
       return promise;
     }
@@ -129,11 +135,11 @@ export class IVRService {
     const rawPapeleta = stt.element?.raw || '';
     this.logger.log(`Papeleta antes de formatear: "${rawPapeleta}"`);
 
-    // Debug explícito del formateo
     const papeleta = fortmatText(rawPapeleta);
     this.logger.log(`Papeleta despues de formatear: "${papeleta}"`);
 
-    const message = `Confirmar que la papeleta es ${joinText(papeleta)}... ${opcionConfirmar}`;
+    // Confirmación con comas para pausas
+    const message = `Confirmar que la papeleta es, ${joinText(papeleta)}. ${opcionConfirmar}`;
     console.log('papeleta formateada final:', papeleta);
 
     const audio = await this.ResponseTTS(message);
@@ -154,14 +160,15 @@ export class IVRService {
 
     if (bullet.element == undefined) {
       const invalid = await this.ResponseTTS(
-        'papeleta no fue encontrada, intentar de nuevo',
+        'Papeleta no fue encontrada, por favor, intente de nuevo',
       );
       return invalid;
     }
 
-    const message = `la papeleta  número ${joinText(bullet.element.documento)} tiene un monto de ${bullet.element.monto} soles. 
-    La fecha de vencimiento para el pago con el 50% de descuento es ${getDateString(bullet.element.fechavencimiento)}
-    La fecha de imposición es ${getDateString(bullet.element.fechainfraccion)}`;
+    // Mensaje con comas para pausas naturales
+    const message = `La papeleta número ${joinText(bullet.element.documento)}, tiene un monto de, ${bullet.element.monto} soles. 
+    La fecha de vencimiento, para el pago con el 50% de descuento, es ${getDateString(bullet.element.fechavencimiento)}.
+    La fecha de imposición, fue el ${getDateString(bullet.element.fechainfraccion)}`;
 
     const response = await this.ResponseTTS(message);
     return response;
@@ -171,7 +178,7 @@ export class IVRService {
     this.logger.log(`Confirmando consulta: code="${code}", type="${type}"`);
 
     const promise = new TypeConfirmacionDTO();
-    const message = `Usted digito ${code}... ${opcionConfirmar}`;
+    const message = `Usted digitó, ${code}. ${opcionConfirmar}`;
     const audio = await this.ResponseTTS(message);
     promise.success = true;
     promise.audio = audio;
@@ -196,7 +203,7 @@ export class IVRService {
     if (tribute.element == undefined) {
       this.logger.log(`Deuda no encontrada: code="${code}", type="${type}"`);
       const invalid = await this.audioProxy.tts(
-        'papeleta no fue encontrada, intentar de nuevo',
+        'Deuda no fue encontrada, por favor, intente de nuevo',
       );
       if (invalid.element == null || !invalid.success)
         throw new InternalServerErrorException(
@@ -212,13 +219,15 @@ export class IVRService {
       (acc, element) => acc + element.monto,
       0,
     );
-    const messagePredial = `Por Impuesto Predial es ${montoRound(ImpuestoPredialMonto)} soles`;
     const ArbitriosMonto = (groups[Arbitrios] ?? []).reduce(
       (acc, element) => acc + element.monto,
       0,
     );
-    const messageArbitrio = `Por Arbitrios es ${montoRound(ArbitriosMonto)} soles`;
-    const message = messagePredial + ' ' + messageArbitrio;
+
+    // Mensajes con comas para pausas
+    const messagePredial = `Por Impuesto Predial, tiene una deuda de, ${montoRound(ImpuestoPredialMonto)} soles`;
+    const messageArbitrio = `Por Arbitrios, tiene una deuda de, ${montoRound(ArbitriosMonto)} soles`;
+    const message = messagePredial + '. ' + messageArbitrio;
 
     this.logger.log(`Mensaje TTS deuda generado: "${message}"`);
     const response = await this.ResponseTTS(message);
@@ -250,14 +259,15 @@ export class IVRService {
     const pendiente = pendientes?.[0] ?? null;
     if (pendiente == null) {
       const audioSin = await this.ResponseTTS(
-        'no se encontraron papeletas pendientes',
+        'No se encontraron, papeletas pendientes',
       );
       return audioSin;
     }
 
-    const message = `la papeleta  número ${pendiente.documento} tiene un monto de ${pendiente.monto} soles. 
-    La fecha de vencimiento para el pago con el 50% de descuento es ${getDateString(pendiente.fechavencimiento)}
-    La fecha de imposición es ${getDateString(pendiente.fechainfraccion)}`;
+    // Mensaje con comas para pausas
+    const message = `La papeleta número ${pendiente.documento}, tiene un monto de, ${pendiente.monto} soles. 
+    La fecha de vencimiento, para el pago con el 50% de descuento, es ${getDateString(pendiente.fechavencimiento)}.
+    La fecha de imposición, fue el ${getDateString(pendiente.fechainfraccion)}`;
 
     const response = await this.ResponseTTS(message);
     return response;
