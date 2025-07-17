@@ -24,6 +24,11 @@ export class AriEvent implements OnModuleInit {
   // Map para guardar información de cada llamada activa
   private activeChannels = new Map<string, ChannelSession>();
 
+  private isConnected: boolean = false;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private reconnectAttempts: number = 0;
+
+
   constructor(
     private readonly configService: ConfigService,
     private readonly ariService: AriService,
@@ -49,14 +54,22 @@ export class AriEvent implements OnModuleInit {
 
     const wsUrl = `${ariUrl}/events?api_key=${ariUser}:${ariPass}&app=${ariApp}`;
 
-    this.logger.log(`Conectando a ARI WebSocket: ${wsUrl}`);
+    this.logger.log(`🔗 Conectando WebSocket ARI: ${wsUrl.replace(ariPass || '', '***')}`);
 
     this.ws = new WebSocket(wsUrl, {
-      rejectUnauthorized: false
+      rejectUnauthorized: false,
+      // Configuración básica para estabilidad
+      handshakeTimeout: 30000,
+      headers: {
+        'Connection': 'keep-alive'
+      }
     });
 
     this.ws.on('open', () => {
-      this.logger.log('Conectado al WebSocket de ARI - Listo para recibir llamadas');
+      this.logger.log('WebSocket ARI CONECTADO - Aplicación mi_ari_app registrada');
+      this.isConnected = true;
+      this.reconnectAttempts = 0;
+      this.startHeartbeat();
     });
 
     this.ws.on('message', async (data) => {
@@ -68,16 +81,68 @@ export class AriEvent implements OnModuleInit {
       }
     });
 
-    this.ws.on('error', (err) => {
-      this.logger.error('Error WebSocket ARI:', err.message);
+    this.ws.on('close', (code, reason) => {
+      this.logger.error(`WebSocket ARI CERRADO - Code: ${code}, Reason: ${reason}`);
+      this.isConnected = false;
+      this.stopHeartbeat();
+      this.handleReconnect();
     });
 
-    this.ws.on('close', () => {
-      this.logger.warn('Conexión WebSocket ARI cerrada. Reconectando...');
-      const reconnectDelay = this.configService.get<number>(IVR_WEBSOCKET_RECONNECT_DELAY) ?? 5000;
-      setTimeout(() => this.connectToARI(), reconnectDelay);
+    this.ws.on('error', (err) => {
+      this.logger.error(`🚨 WebSocket ERROR: ${err.message}`);
+      this.isConnected = false;
+    });
+
+    // Responder a pings de Asterisk
+    this.ws.on('ping', () => {
+      this.ws.pong();
     });
   }
+
+  private startHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws.readyState === WebSocket.OPEN) {
+        this.logger.debug(' Heartbeat - Conexión ARI activa');
+        this.ws.ping();
+      } else {
+        this.logger.warn(' WebSocket no está abierto - Reconectando');
+        this.handleReconnect();
+      }
+    }, 30000); // Ping cada 30 segundos
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  private handleReconnect() {
+    if (this.reconnectAttempts < 5) {
+      this.reconnectAttempts++;
+      const delay = 2000 * this.reconnectAttempts; // 2s, 4s, 6s, 8s, 10s
+
+      this.logger.warn(`Reconexión ${this.reconnectAttempts}/5 en ${delay}ms`);
+
+      setTimeout(() => {
+        this.connectToARI();
+      }, delay);
+    } else {
+      this.logger.error('MÁXIMO DE REINTENTOS ALCANZADO - Esperando 2 minutos');
+
+      // Resetear después de 2 minutos segundos
+      setTimeout(() => {
+        this.reconnectAttempts = 0;
+        this.connectToARI();
+      }, 120000);
+    }
+  }
+
+  public isWebSocketConnected(): boolean {
+    return this.isConnected && this.ws?.readyState === WebSocket.OPEN;
+  }
+
 
   /**
    * Distribuir eventos de Asterisk

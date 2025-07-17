@@ -31,37 +31,61 @@ export class IVRService {
    * Limpiar formato de placa o papeleta
    * Remueve guiones, espacios y convierte a mayúsculas
    */
+  // src/services/ivr.service.ts - Método confirmarPlaca modificado
+
   async confirmarPlaca(file: Express.Multer.File): Promise<ConfirmacionDto> {
     const stt = await this.audioProxy.stt(file);
     if (!stt.success)
       throw new InternalServerErrorException(
         `Error con  la consulta stt genero un ${stt.statusCode}`,
       );
-    const promise = new ConfirmacionDto();
-    if (!stt.element?.success) {
-      this.logger.log(
-        `STT fallo para placa: raw="${stt.element?.raw_text || 'N/A'}", plate="${stt.element?.plate || 'N/A'}"`,
-      );
 
+    const promise = new ConfirmacionDto();
+
+    // Intentar usar raw_text si plate falló pero tenemos datos
+    let placaParaProcesar = '';
+    let shouldSucceed = false;
+
+    if (stt.element?.success && stt.element.plate && stt.element.plate !== 'N/A') {
+      // Caso normal: STT exitoso
+      placaParaProcesar = stt.element.raw_text || stt.element.plate;
+      shouldSucceed = true;
+      this.logger.log(`STT exitoso para placa: raw="${stt.element.raw_text}", plate="${stt.element.plate}"`);
+    } else if (stt.element?.raw_text &&
+      stt.element.raw_text !== 'N/A' &&
+      stt.element.raw_text.trim().length > 0) {
+      // STT falló pero tenemos raw_text válido
+      placaParaProcesar = stt.element.raw_text;
+      shouldSucceed = true;
+      this.logger.log(`STT falló pero recuperando de raw_text: raw="${stt.element.raw_text}", plate="${stt.element.plate || 'N/A'}"`);
+    } else {
+      // Realmente falló
+      this.logger.log(`STT fallo para placa: raw="${stt.element?.raw_text || 'N/A'}", plate="${stt.element?.plate || 'N/A'}"`);
       promise.success = false;
       promise.audio = Buffer.alloc(0);
-      promise.placa = stt.element != null ? stt.element.plate : '';
+      promise.placa = '';
       return promise;
     }
 
-    this.logger.log(
-      `STT exitoso para placa: raw="${stt.element.raw_text}", plate="${stt.element.plate}"`,
-    );
-
-    const rawPlaca = stt.element.raw_text;
-    const plate = fortmatText(rawPlaca);
-    this.logger.log(`Placa antes de formatear: "${rawPlaca}"`);
+    // Formatear la placa (remover guiones, espacios, etc.)
+    const plate = fortmatText(placaParaProcesar);
+    this.logger.log(`Placa antes de formatear: "${placaParaProcesar}"`);
     this.logger.log(`Placa despues de formatear: "${plate}"`);
+
+    // Validación adicional: verificar que la placa formateada tenga sentido
+    if (!plate || plate.length < 3) {
+      this.logger.log(`Placa formateada muy corta o vacía: "${plate}"`);
+      promise.success = false;
+      promise.audio = Buffer.alloc(0);
+      promise.placa = '';
+      return promise;
+    }
 
     // Confirmación con comas para pausas
     const valid = await this.ResponseTTS(
       `Confirmar que la placa es, ${joinText(plate)}. ${opcionConfirmar}`,
     );
+
     promise.success = true;
     promise.audio = valid;
     promise.placa = plate;

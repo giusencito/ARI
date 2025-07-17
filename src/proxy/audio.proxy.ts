@@ -13,7 +13,7 @@ export class AudioProxy {
   constructor(private readonly configService: ConfigService) {
     this.client = axios.create({
       baseURL: this.configService.get<string>(AUDIO_URL) ?? '',
-      timeout: 10000,
+      timeout: 20000,
       headers: {
         Accept: 'application/json',
       },
