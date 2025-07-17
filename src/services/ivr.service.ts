@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfirmacionDto, TypeConfirmacionDTO } from 'src/dto/ConfirmacionDto';
 import { AudioProxy } from 'src/proxy/audio.proxy';
 import { AnswerValidateDto } from 'src/proxy/dto/AnswerValidateDto';
@@ -35,7 +39,9 @@ export class IVRService {
       );
     const promise = new ConfirmacionDto();
     if (!stt.element?.success) {
-      this.logger.log(`STT fallo para placa: raw="${stt.element?.raw_text || 'N/A'}", plate="${stt.element?.plate || 'N/A'}"`);
+      this.logger.log(
+        `STT fallo para placa: raw="${stt.element?.raw_text || 'N/A'}", plate="${stt.element?.plate || 'N/A'}"`,
+      );
 
       promise.success = false;
       promise.audio = Buffer.alloc(0);
@@ -43,7 +49,9 @@ export class IVRService {
       return promise;
     }
 
-    this.logger.log(`STT exitoso para placa: raw="${stt.element.raw_text}", plate="${stt.element.plate}"`);
+    this.logger.log(
+      `STT exitoso para placa: raw="${stt.element.raw_text}", plate="${stt.element.plate}"`,
+    );
 
     const rawPlaca = stt.element.raw_text;
     const plate = fortmatText(rawPlaca);
@@ -59,7 +67,6 @@ export class IVRService {
     promise.placa = plate;
     return promise;
   }
-
 
   async placaInfo(placaId: string): Promise<Buffer> {
     const placaFormateada = fortmatText(placaId);
@@ -121,10 +128,14 @@ export class IVRService {
       );
     const promise = new ConfirmacionDto();
 
-    this.logger.log(`STT respuesta para papeleta: success=${stt.element?.success}, raw="${stt.element?.raw || 'N/A'}"`);
+    this.logger.log(
+      `STT respuesta para papeleta: success=${stt.element?.success}, raw="${stt.element?.raw || 'N/A'}"`,
+    );
 
     if (!stt.element?.success) {
-      this.logger.log(`STT fallo para papeleta: raw="${stt.element?.raw || 'N/A'}"`);
+      this.logger.log(
+        `STT fallo para papeleta: raw="${stt.element?.raw || 'N/A'}"`,
+      );
 
       promise.success = false;
       promise.audio = Buffer.alloc(0);
@@ -166,9 +177,10 @@ export class IVRService {
     }
 
     // Mensaje con comas para pausas naturales
+    //const descuento = `La fecha de vencimiento, para el pago con el 50% de descuento, es ${getDateString(bullet.element.fechavencimiento)}.`;
+
     const message = `La papeleta número ${joinText(bullet.element.documento)}, tiene un monto de, ${bullet.element.monto} soles. 
-    La fecha de vencimiento, para el pago con el 50% de descuento, es ${getDateString(bullet.element.fechavencimiento)}.
-    La fecha de imposición, fue el ${getDateString(bullet.element.fechainfraccion)}`;
+    La fecha de infracción, fue el ${getDateString(bullet.element.fechainfraccion)}`;
 
     const response = await this.ResponseTTS(message);
     return response;
@@ -191,10 +203,14 @@ export class IVRService {
     this.logger.log(`Iniciando consulta deuda: code="${code}", type="${type}"`);
 
     const tribute = await this.satProxy.GetDeudaTributaria(code, type);
-    this.logger.log(`Respuesta SAT deuda: success=${tribute.success}, statusCode=${tribute.statusCode}`);
+    this.logger.log(
+      `Respuesta SAT deuda: success=${tribute.success}, statusCode=${tribute.statusCode}`,
+    );
 
     if (!tribute.success) {
-      this.logger.error(`Error consultando deuda SAT: code="${code}", type="${type}", statusCode=${tribute.statusCode}`);
+      this.logger.error(
+        `Error consultando deuda SAT: code="${code}", type="${type}", statusCode=${tribute.statusCode}`,
+      );
       throw new InternalServerErrorException(
         `Error con  la consulta de sat genero un ${tribute.statusCode}`,
       );
