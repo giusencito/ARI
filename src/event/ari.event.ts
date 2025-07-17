@@ -129,13 +129,13 @@ export class AriEvent implements OnModuleInit {
         this.connectToARI();
       }, delay);
     } else {
-      this.logger.error('MÁXIMO DE REINTENTOS ALCANZADO - Esperando 5 minutos');
+      this.logger.error('MÁXIMO DE REINTENTOS ALCANZADO - Esperando 2 minutos');
 
-      // Resetear después de 30 segundos
+      // Resetear después de 2 minutos segundos
       setTimeout(() => {
         this.reconnectAttempts = 0;
         this.connectToARI();
-      }, 30000);
+      }, 120000);
     }
   }
 
