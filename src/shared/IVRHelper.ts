@@ -49,3 +49,26 @@ export const joinText = (text: string): string => {
   const caracteres = text.split('');
   return caracteres.join(', ');
 };
+
+export const formatMontoParaVoz = (monto: number): string => {
+  if (monto === null || monto === undefined) return '0 soles';
+
+  // Redondear a 2 decimales para evitar problemas de precisión
+  const montoRedondeado = Math.round(monto * 100) / 100;
+
+  // Separar parte entera y decimal
+  const parteEntera = Math.floor(montoRedondeado);
+  const parteDecimal = Math.round((montoRedondeado - parteEntera) * 100);
+
+  let resultado = `${parteEntera} soles`;
+
+  if (parteDecimal > 0) {
+    if (parteDecimal === 1) {
+      resultado += ` y 1 céntimo`;
+    } else {
+      resultado += ` y ${parteDecimal} céntimos`;
+    }
+  }
+
+  return resultado;
+};

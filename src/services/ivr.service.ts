@@ -15,6 +15,7 @@ import {
   ImpuestoPredial,
   joinText,
   montoRound,
+  formatMontoParaVoz,
   opcionConfirmar,
 } from 'src/shared/IVRHelper';
 
@@ -110,7 +111,7 @@ export class IVRService {
       const roundedSum = Math.round(sum * 100) / 100;
 
       // Agregar comas estratégicas para pausas
-      message += `, con un monto total de, ${roundedSum} soles`;
+      message += `, con un monto total de, ${formatMontoParaVoz(sum)}`;
     }
 
     const response = await this.ResponseTTS(message);
@@ -203,7 +204,7 @@ export class IVRService {
     // Mensaje con comas para pausas naturales
     //const descuento = `La fecha de vencimiento, para el pago con el 50% de descuento, es ${getDateString(bullet.element.fechavencimiento)}.`;
 
-    const message = `La papeleta número ${joinText(bullet.element.documento)}, tiene un monto de, ${bullet.element.monto} soles. 
+    const message = `La papeleta número ${joinText(bullet.element.documento)}, tiene un monto de, ${formatMontoParaVoz(bullet.element.monto)}.
     La fecha de infracción, fue el ${getDateString(bullet.element.fechainfraccion)}`;
 
     const response = await this.ResponseTTS(message);
@@ -265,8 +266,8 @@ export class IVRService {
     );
 
     // Mensajes con comas para pausas
-    const messagePredial = `Por Impuesto Predial, tiene una deuda de, ${montoRound(ImpuestoPredialMonto)} soles`;
-    const messageArbitrio = `Por Arbitrios, tiene una deuda de, ${montoRound(ArbitriosMonto)} soles`;
+    const messagePredial = `Por Impuesto Predial, tiene una deuda de, ${formatMontoParaVoz(ImpuestoPredialMonto)}`;
+    const messageArbitrio = `Por Arbitrios, tiene una deuda de, ${formatMontoParaVoz(ArbitriosMonto)}`;
     const message = messagePredial + '. ' + messageArbitrio;
 
     this.logger.log(`Mensaje TTS deuda generado: "${message}"`);
