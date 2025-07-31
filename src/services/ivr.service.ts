@@ -48,20 +48,16 @@ export class IVRService {
     let shouldSucceed = false;
 
     if (stt.element?.success && stt.element.plate && stt.element.plate !== 'N/A') {
-      // Caso normal: STT exitoso
-      placaParaProcesar = stt.element.raw_text || stt.element.plate;
-      shouldSucceed = true;
-      this.logger.log(`STT exitoso para placa: raw="${stt.element.raw_text}", plate="${stt.element.plate}"`);
-    } else if (stt.element?.raw_text &&
-      stt.element.raw_text !== 'N/A' &&
-      stt.element.raw_text.trim().length > 0) {
-      // STT falló pero tenemos raw_text válido
-      placaParaProcesar = stt.element.raw_text;
-      shouldSucceed = true;
-      this.logger.log(`STT falló pero recuperando de raw_text: raw="${stt.element.raw_text}", plate="${stt.element.plate || 'N/A'}"`);
+      // SOLO generar TTS si Python dice que la placa es válida
+      const plate = stt.element.plate;
+      const valid = await this.ResponseTTS(`Confirmar que la placa es, ${joinText(plate)}. ${opcionConfirmar}`);
+
+      promise.success = true;
+      promise.audio = valid;
+      promise.placa = plate;
+      return promise;
     } else {
-      // Realmente falló
-      this.logger.log(`STT fallo para placa: raw="${stt.element?.raw_text || 'N/A'}", plate="${stt.element?.plate || 'N/A'}"`);
+      // Python rechazó → NO generar TTS
       promise.success = false;
       promise.audio = Buffer.alloc(0);
       promise.placa = '';
@@ -72,6 +68,15 @@ export class IVRService {
     const plate = fortmatText(placaParaProcesar);
     this.logger.log(`Placa antes de formatear: "${placaParaProcesar}"`);
     this.logger.log(`Placa despues de formatear: "${plate}"`);
+
+    // Validación de longitud de placa (exactamente 6 caracteres)
+    if (!plate || plate.length !== 6) {
+      this.logger.log(`Placa inválida después de formatear: "${plate}" (longitud: ${plate?.length || 0})`);
+      promise.success = false;
+      promise.audio = Buffer.alloc(0);
+      promise.placa = '';
+      return promise;
+    }
 
     // Validación adicional: verificar que la placa formateada tenga sentido
     if (!plate || plate.length < 3) {
@@ -306,7 +311,7 @@ export class IVRService {
     }
 
     // Mensaje con comas para pausas
-    const message = `La papeleta número ${pendiente.documento}, tiene un monto de, ${pendiente.monto} soles. 
+    const message = `La papeleta número ${pendiente.documento}, tiene un monto de, ${formatMontoParaVoz(pendiente.monto)}. 
     La fecha de vencimiento, para el pago con el 50% de descuento, es ${getDateString(pendiente.fechavencimiento)}.
     La fecha de imposición, fue el ${getDateString(pendiente.fechainfraccion)}`;
 
