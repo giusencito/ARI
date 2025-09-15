@@ -106,13 +106,20 @@ export class IVRService {
         `Error con  la consulta de sat genero un ${bullets.statusCode}`,
       );
 
-    const bulletsArray = bullets.element ?? [];
+    const allResults = bullets.element ?? [];
+
+    // Filtrar solo papeletas
+    const papeletasOnly = allResults.filter(item => item.concepto === 'Papeletas');
+
+    this.logger.log(`Resultados totales del SAT: ${allResults.length}`);
+    this.logger.log(`Papeletas filtradas: ${papeletasOnly.length}`);
+    this.logger.log(`Conceptos encontrados: ${[...new Set(allResults.map(item => item.concepto))].join(', ')}`);
 
     // Usar comas para crear pausas naturales
-    let message = `La placa ${joinText(placaFormateada)}, cuenta con ${bulletsArray.length} papeletas`;
+    let message = `La placa ${joinText(placaFormateada)}, cuenta con ${papeletasOnly.length} papeletas`;
 
-    if (bulletsArray.length > 0) {
-      const sum = bulletsArray.reduce((acc, element) => acc + element.monto, 0);
+    if (papeletasOnly.length > 0) {
+      const sum = papeletasOnly.reduce((acc, element) => acc + element.monto, 0);
       const roundedSum = Math.round(sum * 100) / 100;
 
       // Agregar comas estratégicas para pausas
@@ -298,9 +305,19 @@ export class IVRService {
       );
     }
 
-    const pendientes = bullet.element?.filter(
+    const allResults = bullet.element ?? [];
+
+    // Filtrar solo papeletas
+    const papeletasOnly = allResults.filter(item => item.concepto === 'Papeletas');
+
+    // Filtrar solo las pendientes dentro de las papeletas
+    const pendientes = papeletasOnly.filter(
       (item) => item.estado === 'Pendiente',
     );
+
+    this.logger.log(`Total resultados SAT: ${allResults.length}`);
+    this.logger.log(`Papeletas encontradas: ${papeletasOnly.length}`);
+    this.logger.log(`Papeletas pendientes: ${pendientes.length}`);
 
     const pendiente = pendientes?.[0] ?? null;
     if (pendiente == null) {
